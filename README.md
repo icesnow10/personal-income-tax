@@ -12,10 +12,11 @@ npx skills@latest add icesnow10/personal-income-tax
 
 ### tax
 
-- [rsu](skills/tax/rsu/SKILL.md) — Fill the IRPF declaration for Nu Holdings (Nubank) RSUs
-  from E*TRADE / Morgan Stanley documents: vesting cost basis, capital gains on sales, and
-  the year-end position, converting USD→BRL with BCB PTAX (venda for acquisition, compra for
-  sale). Bundles a ready-to-fill spreadsheet template and helper scripts.
+- [rsu](skills/tax/rsu/SKILL.md) — Fill the IRPF declaration for RSUs of a foreign (US-listed)
+  company held at any equity broker: vesting cost basis, capital gains on sales, and the
+  year-end position, converting USD→BRL with the Central Bank's official PTAX (sell rate for
+  acquisition, buy rate for sale). Modular (extraction / FX / calculation / template) and
+  bundles a ready-to-fill spreadsheet template plus helper scripts.
 
 ---
 

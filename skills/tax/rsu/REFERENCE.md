@@ -1,76 +1,83 @@
 # RSU IRPF — Reference
 
-## 1. Source documents (E*TRADE / Morgan Stanley)
+Modular reference for the `rsu` skill. Each section stands alone.
 
-### getReleaseConfirmation (vesting)
-One PDF per **grant** per **vesting date**. Extract with `pdftotext -layout file.pdf -`.
-Relevant fields (labels may be visually misaligned in the text dump — match by value):
+## 1. Extraction module — broker documents
 
+RSU equity platforms issue two document types (names vary slightly by broker). Extract text
+with `pdftotext -layout file.pdf -` and match fields by value (labels are often misaligned).
+
+### Release confirmation (one per grant per vesting date) → vesting
 | Field | Meaning |
 |---|---|
-| `Release Date` | vesting date (e.g. `01-02-2025` = MM-DD-YYYY) |
-| `Market Value Per Share` | closing price USD at vest (e.g. the `$12.345678` value; `Award Price` is `$0.00`) |
-| `Award Shares` | gross shares vested |
-| `Shares Traded` | shares withheld & sold to pay tax (shown negative) |
-| `Shares Issued` | **NET shares deposited = the number to declare** |
-| `Award Number` | grant id (ES-7283, NU4235, NU18082, …) |
+| Release / vesting date | the acquisition date |
+| Grant / award date | when the grant was awarded |
+| Grant / award number | grant id, for tracking which lot is which |
+| Market value per share | closing price USD at vest |
+| Gross shares (released/awarded) | total shares vested |
+| Withheld / traded shares | shares sold to cover tax (negative) |
+| **Net shares (issued/deposited)** | **the number to declare** = gross − withheld |
 
-Sanity check: `Award Shares − Shares Traded = Shares Issued`, and
-`Award Shares × Market Value Per Share = Market Value` (the gross income at vest).
+Sanity check: `gross − withheld = net`, and `gross × market value per share = gross income`.
 
-### TradeConfirmations (sale)
-One PDF per sale. Extract: `Trade Date`, `Quantity`, `Price` (unit, **before** the
-per-order commission, e.g. $8.99), `Principal` (= qty × price).
+### Trade confirmation (one per sale) → sale
+Extract: trade date, quantity, unit price (before any per-order commission), principal
+(= qty × price).
 
-## 2. PTAX (BCB official USD/BRL)
+## 2. Opening balance (saldo inicial) module
 
-Use the **closing PTAX** of each event date, fetched from the Banco Central Olinda API
-(`scripts/fetch_ptax.py`). Two rates exist per day:
+Always confirm with the user which applies (see SKILL.md):
 
-- **PTAX Venda** (sell) → used for **acquisition / vesting** cost basis.
-- **PTAX Compra** (buy) → used for **sale / alienação** proceeds.
+- **Manual**: user supplies `quantidade`, `preco_medio_brl`, `custo_medio_usd` as declared
+  at the prior year-end. Use as-is.
+- **Automatic**: from all prior-year release confirmations (and sales), compute the shares
+  still held and their weighted-average cost:
+  - `quantidade = Σ net shares vested up to and still held at 31/12 of the prior year`
+  - `preco_medio_brl = Σ(net shares × MV/share × PTAX sell) ÷ quantidade`
+  - `custo_medio_usd = Σ(net shares × MV/share) ÷ quantidade`
 
-Legal basis: IN SRF nº 118/2000 — capital gains on assets denominated in foreign currency.
-Mnemonic: **"compra na venda, venda na compra"** (you buy USD at the sell rate when you
-acquire; you sell USD at the buy rate when you dispose).
+Validation: the opening quantity should equal the broker's reported holdings on 31/12.
 
-## 3. Calculations
+## 3. FX module — PTAX (Central Bank of Brazil)
+
+Use the official closing PTAX of each event date (`scripts/fetch_ptax.py`). Two rates/day:
+
+- **PTAX Venda (sell)** → **acquisition / vesting** cost basis.
+- **PTAX Compra (buy)** → **sale / alienação** proceeds.
+
+Legal basis: IN SRF nº 118/2000 (capital gains on foreign-currency-denominated assets).
+Mnemonic: **"compra na venda, venda na compra"**.
+
+## 4. Calculation module
 
 Per vesting lot (net):
 - `valor_acao_brl = round(market_value_usd * ptax_venda, 2)`
-- `valor_total_brl = net_shares * valor_acao_brl`  ← acquisition cost (Bens e Direitos) & income
+- `valor_total_brl = net_shares * valor_acao_brl`  ← acquisition cost & vesting income
 
 Per sale:
 - `valor_acao_brl = round(sale_price_usd * ptax_compra, 2)`
 - `proceeds_brl = qty_sold * valor_acao_brl`
 - `gain_brl = proceeds_brl − qty_sold * average_cost_to_date_brl` (weighted moving average)
 
-Saldo inicial (opening position) = the shares still held at prior year-end:
-- `quantidade = Σ net shares vested up to and held at 31/12 of prior year`
-- `preco_medio_brl = Σ(lot cost in BRL) / quantidade`
-- `custo_medio_usd = Σ(net shares × MV/share) / quantidade`
+Ending position = `opening + Σ vested − Σ sold` (must be ≥ 0).
 
-Validation: opening quantity should equal the broker statement's holdings on 31/12; and
-`ending = opening + vested − sold` must be ≥ 0.
+## 5. Template module (`template_rsu.xlsx`)
 
-## 4. Spreadsheet template (`template_rsu.xlsx`)
-
-Grant-Thornton-style workbook. Open **as a Google Sheet** (calc tab uses `SORT/FILTER`).
-Only fill the input cells below — every other cell is a formula and must be left alone.
+Open **as a Google Sheet** (calc tab uses Google-Sheets functions). Fill only the input
+cells; everything else is a formula.
 
 `input` sheet:
 
 | Section | Input cells | Notes |
 |---|---|---|
-| Saldo inicial (row 4) | `D4` quantity, `E4` avg price R$, `G4` avg cost USD | `F4`,`H4` are formulas |
-| Vesting (rows 8–11) | `D8:D11` net quantity | dates `B`, prices `E` are pre-defined; `F` (PTAX), `G`, `H` are formulas |
-| Sale (rows 16–25) | `B` date, `D` quantity, `E` unit price USD | `C`,`F`,`G`,`H` are formulas |
+| Opening balance (row 4) | `D4` quantity, `E4` avg price R$, `G4` avg cost USD | `F4`,`H4` are formulas |
+| Vesting (rows 8–11) | `D8:D11` net quantity | dates `B`, prices `E` pre-defined; `F`,`G`,`H` formulas |
+| Sale (rows 16–25) | `B` date, `D` quantity, `E` unit price USD | `C`,`F`,`G`,`H` formulas |
 
-The `F` (PTAX) formulas `XLOOKUP` into the `aux_ptax_historical_data` sheet — column
-**E (ptax_sell)** for vesting, column **D (ptax_buy)** for sales. If you rename that sheet,
-update those references.
+The `F` (PTAX) formulas look up the `aux_ptax_historical_data` sheet — column **E (ptax_sell)**
+for vesting, column **D (ptax_buy)** for sales.
 
-`data.json` for `scripts/fill_template.py`:
+`data.json` for `scripts/fill_template.py` (numbers are illustrative placeholders):
 
 ```json
 {
@@ -87,13 +94,13 @@ update those references.
 
 > The numbers above are illustrative placeholders, not real data.
 
-## 5. Where each number lands in the IRPF
+## 6. Where each number lands in the IRPF
 
-- **Bens e Direitos** — group 03 (participações societárias) / código de ações no exterior:
-  the year-end position (quantity + accumulated cost in R$).
-- **Vesting income** — rendimento tributável recebido de fonte no exterior (carnê-leão,
-  recolhido mensalmente; the withheld "Brazil" tax on the confirmation is the credit).
-- **Capital gain on sales** — ganho de capital (GCAP), 15%+ on `gain_brl`. Note the monthly
-  R$35.000 alienation exemption for ações may apply — check current rules.
+- **Bens e Direitos** — shares abroad (grupo 03 / código de ações no exterior): year-end
+  position (quantity + accumulated cost in R$).
+- **Vesting income** — rendimento tributável de fonte no exterior (carnê-leão; tax withheld
+  at vest is the credit).
+- **Capital gain on sales** — ganho de capital (GCAP), 15%+ on `gain_brl`. Check the current
+  monthly exemption for small share sales.
 
 Not tax advice — confirm with an accountant.
