@@ -66,21 +66,19 @@ Ending position = `opening + Σ vested − Σ sold` (must be ≥ 0).
 Open **as a Google Sheet** (calc tab uses Google-Sheets functions). Fill only the input
 cells; everything else is a formula.
 
-`input` sheet:
+`input` sheet (per-award):
 
 | Section | Input cells | Notes |
 |---|---|---|
 | Opening balance (row 4) | `D4` quantity, `E4` avg price R$, `G4` avg cost USD | `F4`,`H4` are formulas |
-| **Vesting detail (per grant, rows 30+)** | `release_date`, `award_date`, `award_number`, `net_quantity`, `closing_price_usd` | this is where you enter vestings — one row per grant per release date |
-| Vesting totals by date (rows 8–11) | `B` release date only | `D`/`E` auto-aggregate from the detail (`SUMIFS`/`INDEX`); these 4 rows feed the calc engine |
-| Sale (rows 16–25) | `B` date, `D` quantity, `E` unit price USD | `C`,`F`,`G`,`H` formulas |
+| Vesting, one row per award (rows 8–31) | `B` release_date, `D` award_date, `E` award_number, `F` net_quantity, `G` closing_price_usd | `C` event, `H` fx (ptax sell), `I`,`J` value formulas |
+| Sale (rows 37–48) | `B` sale_date, `D` quantity_sold, `E` sale_price_usd | `C` event, `F` fx (ptax buy), `G`,`H` value formulas |
 
-Per-grant rationale: the calc engine reads only 4 by-date total rows (`input!B8:E11`), so the
-detail table aggregates into them by date (all grants vesting on the same date share the same
-closing price). The `release_date` in rows 8–11 must match the detail's release dates.
-
-The `F` (PTAX) formulas look up `aux_ptax_historical_data` — column **E (ptax_sell)** for
-vesting, column **D (ptax_buy)** for sales.
+The `do_not_change__calculation_memo` sheet rebuilds the result independently: it merges the
+vesting and sale rows, sorts them chronologically (`SORT(FILTER(...))`), then computes the
+running quantity, the moving weighted-average cost (BRL and USD), and the capital gain per sale
+(`proceeds − qty × avg_cost_to_date`). The `output` sheet reads the final position and the
+total gain from it. Acquisition (vesting) uses **ptax_sell**; sale proceeds use **ptax_buy**.
 
 `data.json` for `scripts/fill_template.py` (numbers are illustrative placeholders):
 

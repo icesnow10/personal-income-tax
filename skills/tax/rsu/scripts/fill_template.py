@@ -4,21 +4,21 @@
 Usage:
     python fill_template.py template_rsu.xlsx output.xlsx data.json
 
-Writes ONLY the input cells and preserves every formula. The vesting input is
-PER-GRANT (one row per grant per release date) in the "Vesting detail" table; the
-4 by-date total rows (8-11) that the calc engine reads are SUMIFS/INDEX formulas, so
-this script only sets their release dates. Dates are formatted yyyy-mm-dd and the
-workbook is flagged to recalculate on open.
+Writes ONLY the input cells and preserves every formula. Vesting is PER-AWARD
+(one row per grant per release date, rows 8-31); sales go in rows 37-48. The
+calculation memo merges and sorts all events chronologically and computes the
+moving weighted-average cost + capital gain on its own. Dates are formatted
+yyyy-mm-dd and the workbook is flagged to recalculate on open.
 
 data.json shape (numbers are illustrative placeholders):
 {
   "saldo_inicial": {"quantidade": 1000, "preco_medio_brl": 40.0, "custo_medio_usd": 8.0},
-  "vesting": [   # one entry per grant per release date (the per-grant detail)
+  "vesting": [   # one entry per award per release date
     {"release_date": "2025-01-03", "award_date": "2021-10-04", "award_number": "GRANT-A",
      "qty": 41, "price_usd": 10.0},
     ...
   ],
-  "venda": [{"date": "2025-08-28", "qty": 50, "price_usd": 12.0}, ...]  # up to 10 rows (16-25)
+  "venda": [{"date": "2025-08-28", "qty": 50, "price_usd": 12.0}, ...]
 }
 
 Requires: openpyxl  (pip install openpyxl)
@@ -29,12 +29,11 @@ import datetime as dt
 
 import openpyxl
 
-INPUT_SHEET = "input"          # adjust if the template renames it
+INPUT_SHEET = "input"
 DATE_FMT = "yyyy-mm-dd"
 BRL_FMT = "[$R$]#,##0.0000"
-VEST_TOTAL_ROWS = (8, 11)      # the 4 by-date total rows the engine reads (release dates only)
-DETAIL_START = 30              # first per-grant detail row
-DETAIL_MAX = 45
+VEST = (8, 31)     # per-award vesting rows
+SALE = (37, 48)    # sale rows
 
 
 def _date(iso):
@@ -55,38 +54,27 @@ def fill(template, output, data):
         ws["G4"] = s["custo_medio_usd"]
         ws["B4"].number_format = DATE_FMT
 
-    # 2) Vesting — per-grant detail rows + by-date totals' release dates
+    # 2) Vesting — one row per award (B release_date, D award_date, E award_number,
+    #    F net qty, G price USD); C/H/I/J are formulas.
     vest = data.get("vesting", [])
-    if len(vest) > (DETAIL_MAX - DETAIL_START + 1):
-        raise SystemExit(f"Too many vesting rows ({len(vest)}); detail holds "
-                         f"{DETAIL_MAX - DETAIL_START + 1}. Extend the detail table.")
+    cap = VEST[1] - VEST[0] + 1
+    if len(vest) > cap:
+        raise SystemExit(f"{len(vest)} vesting rows but only {cap} (rows {VEST[0]}-{VEST[1]}).")
     for i, v in enumerate(vest):
-        r = DETAIL_START + i
+        r = VEST[0] + i
         ws[f"B{r}"] = _date(v["release_date"]); ws[f"B{r}"].number_format = DATE_FMT
-        ws[f"C{r}"] = _date(v["award_date"]);   ws[f"C{r}"].number_format = DATE_FMT
-        ws[f"D{r}"] = v["award_number"]
-        ws[f"E{r}"] = v["qty"]
-        ws[f"F{r}"] = v["price_usd"]
-    # distinct release dates (chronological) -> the 4 by-date total rows the engine reads
-    seen, dates = set(), []
-    for v in vest:
-        if v["release_date"] not in seen:
-            seen.add(v["release_date"]); dates.append(v["release_date"])
-    dates.sort()
-    r0, r1 = VEST_TOTAL_ROWS
-    if len(dates) > (r1 - r0 + 1):
-        raise SystemExit(f"{len(dates)} distinct vesting dates but only {r1 - r0 + 1} "
-                         f"total rows ({r0}-{r1}). The engine supports up to that many.")
-    for i in range(r1 - r0 + 1):
-        cell = f"B{r0 + i}"
-        if i < len(dates):
-            ws[cell] = _date(dates[i]); ws[cell].number_format = DATE_FMT
-        else:
-            ws[cell] = None            # clear unused total rows so they don't pull stale dates
+        ws[f"D{r}"] = _date(v["award_date"]);   ws[f"D{r}"].number_format = DATE_FMT
+        ws[f"E{r}"] = v["award_number"]
+        ws[f"F{r}"] = v["qty"]
+        ws[f"G{r}"] = v["price_usd"]
 
-    # 3) Sales (rows 16-25)
-    for i, sale in enumerate(data.get("venda", [])[:10]):
-        r = 16 + i
+    # 3) Sales (B date, D quantity, E unit price USD); C/F/G/H are formulas.
+    sales = data.get("venda", [])
+    cap = SALE[1] - SALE[0] + 1
+    if len(sales) > cap:
+        raise SystemExit(f"{len(sales)} sale rows but only {cap} (rows {SALE[0]}-{SALE[1]}).")
+    for i, sale in enumerate(sales):
+        r = SALE[0] + i
         ws[f"B{r}"] = _date(sale["date"]); ws[f"B{r}"].number_format = DATE_FMT
         ws[f"D{r}"] = sale["qty"]
         ws[f"E{r}"] = sale["price_usd"]
