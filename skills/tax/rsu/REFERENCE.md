@@ -71,11 +71,16 @@ cells; everything else is a formula.
 | Section | Input cells | Notes |
 |---|---|---|
 | Opening balance (row 4) | `D4` quantity, `E4` avg price R$, `G4` avg cost USD | `F4`,`H4` are formulas |
-| Vesting (rows 8–11) | `D8:D11` net quantity | dates `B`, prices `E` pre-defined; `F`,`G`,`H` formulas |
+| **Vesting detail (per grant, rows 30+)** | `release_date`, `award_date`, `award_number`, `net_quantity`, `closing_price_usd` | this is where you enter vestings — one row per grant per release date |
+| Vesting totals by date (rows 8–11) | `B` release date only | `D`/`E` auto-aggregate from the detail (`SUMIFS`/`INDEX`); these 4 rows feed the calc engine |
 | Sale (rows 16–25) | `B` date, `D` quantity, `E` unit price USD | `C`,`F`,`G`,`H` formulas |
 
-The `F` (PTAX) formulas look up the `aux_ptax_historical_data` sheet — column **E (ptax_sell)**
-for vesting, column **D (ptax_buy)** for sales.
+Per-grant rationale: the calc engine reads only 4 by-date total rows (`input!B8:E11`), so the
+detail table aggregates into them by date (all grants vesting on the same date share the same
+closing price). The `release_date` in rows 8–11 must match the detail's release dates.
+
+The `F` (PTAX) formulas look up `aux_ptax_historical_data` — column **E (ptax_sell)** for
+vesting, column **D (ptax_buy)** for sales.
 
 `data.json` for `scripts/fill_template.py` (numbers are illustrative placeholders):
 
@@ -83,8 +88,9 @@ for vesting, column **D (ptax_buy)** for sales.
 {
   "saldo_inicial": {"quantidade": 1000, "preco_medio_brl": 40.0000, "custo_medio_usd": 8.0000},
   "vesting": [
-    {"date": "2025-01-03", "qty": 100, "price_usd": 10.00},
-    {"date": "2025-04-01", "qty": 100, "price_usd": 11.00}
+    {"release_date": "2025-01-03", "award_date": "2021-10-04", "award_number": "GRANT-A", "qty": 40, "price_usd": 10.00},
+    {"release_date": "2025-01-03", "award_date": "2022-03-14", "award_number": "GRANT-B", "qty": 12, "price_usd": 10.00},
+    {"release_date": "2025-04-01", "award_date": "2022-03-14", "award_number": "GRANT-B", "qty": 12, "price_usd": 11.00}
   ],
   "venda": [
     {"date": "2025-08-28", "qty": 50, "price_usd": 12.00}
