@@ -24,7 +24,7 @@ market price. See REFERENCE.md. Not tax advice.
 
 Requires: pandas, openpyxl
 """
-import argparse, re, unicodedata
+import argparse, re, shutil, unicodedata
 from pathlib import Path
 import pandas as pd
 from openpyxl import Workbook, load_workbook
@@ -34,6 +34,20 @@ from openpyxl.utils import get_column_letter
 PURPLE, LPURPLE = "FF674EA7", "FFD9D2E9"
 SKILL_DIR = Path(__file__).resolve().parents[1]            # scripts/ -> b3/
 IRPF_CODE = {"Ação": (3,1), "BDR": (4,4), "FII": (7,3), "RENDA FIXA": (4,2)}  # grupo, codigo
+
+# empty (header-only) templates seeded into the working folder so the files are visible/editable
+EMPTY_TEMPLATES = {
+ "ticker_memory.md": (
+   "# ticker_memory — current ticker per code\n\n"
+   "Explicit renames the engine can't infer (fund mergers, BDR renames, PN→ON). FII subscription\n"
+   "receipts (XXXX12 / XXXX13 → XXXX11) are folded automatically — no row needed. Add yours:\n\n"
+   "| from_ticker | to_ticker | note | source |\n|---|---|---|---|\n"),
+ "overrides_memory.md": (
+   "# overrides_memory — corporate-action cost resets\n\n"
+   "Mergers/incorporações where the fato relevante sets a NEW cost basis. On `date` the position\n"
+   "becomes (qty, qty×avg_price). Splits/amortizações/bonus cotas are automatic — not here. Add yours:\n\n"
+   "| ticker | date | qty | avg_price | note | source |\n|---|---|---|---|---|---|\n"),
+}
 
 
 def norm(s):
@@ -69,51 +83,58 @@ def table_with(path, key):
         if key in header: return rows
     return []
 
+def resolve_memory(name, memory_dir, warn):
+    """Return the path to a memory file in memory_dir, SEEDING it if absent so the user can see
+    and edit it: mapping_memory.md is copied from the bundled generic table; ticker/overrides get
+    an empty header-only template (never illustrative rows that could be applied by mistake)."""
+    p = Path(memory_dir) / name
+    if p.exists(): return p
+    try:
+        if name == "mapping_memory.md" and (SKILL_DIR / name).exists():
+            shutil.copy(SKILL_DIR / name, p)
+            warn.append(f"seeded {name} into the working folder (generic B3 table — edit if needed)")
+        elif name in EMPTY_TEMPLATES:
+            p.write_text(EMPTY_TEMPLATES[name], encoding="utf-8")
+            warn.append(f"created empty {name} in the working folder — add your rows and re-run")
+        else:
+            return None
+        return p
+    except Exception:
+        return SKILL_DIR / name if (SKILL_DIR / name).exists() else None
+
 def load_memory(memory_dir, warn):
-    def mf(name, fallback):
-        p = Path(memory_dir) / name
-        if p.exists(): return p
-        if fallback and (SKILL_DIR / name).exists(): return SKILL_DIR / name
-        return None
-    # mapping (generic; falls back to the bundled copy)
     classification, logic = {}, {}
-    for d in table_with(mf("mapping_memory.md", True), "entry_movement"):
+    for d in table_with(resolve_memory("mapping_memory.md", memory_dir, warn), "entry_movement"):
         mv = d.get("entry_movement")
         if not mv: continue
         classification[mv] = (d.get("credito","no_action"), d.get("debito","no_action"))
         logic[mv] = d.get("logic","")
-    # ticker renames + cost resets (taxpayer-specific; NO fallback — empty if absent)
     renames, ren_rows = {}, []
-    tpath = mf("ticker_memory.md", False)
-    if tpath:
-        for d in table_with(tpath, "from_ticker"):
-            f, t = d.get("from_ticker"), d.get("to_ticker")
-            if f and t: renames[f] = t
-            ren_rows.append(d)
-    else:
-        warn.append("ticker_memory.md not found in --memory-dir — running with no renames "
-                    f"(template: {SKILL_DIR/'ticker_memory.md'})")
+    for d in table_with(resolve_memory("ticker_memory.md", memory_dir, warn), "from_ticker"):
+        f, t = d.get("from_ticker"), d.get("to_ticker")
+        if f and t: renames[f] = t
+        ren_rows.append(d)
     resets, ov_rows = {}, []
-    opath = mf("overrides_memory.md", False)
-    if opath:
-        for d in table_with(opath, "ticker"):
-            tk, date = d.get("ticker"), d.get("date")
-            if tk and date:
-                resets[(tk, date)] = (float(d["qty"]), float(d["avg_price"]),
-                                      d.get("note",""), d.get("source",""))
-            ov_rows.append(d)
-    else:
-        warn.append("overrides_memory.md not found in --memory-dir — running with no cost resets "
-                    f"(template: {SKILL_DIR/'overrides_memory.md'})")
+    for d in table_with(resolve_memory("overrides_memory.md", memory_dir, warn), "ticker"):
+        tk, date = d.get("ticker"), d.get("date")
+        if tk and date:
+            resets[(tk, date)] = (float(d["qty"]), float(d["avg_price"]),
+                                  d.get("note",""), d.get("source",""))
+        ov_rows.append(d)
     return classification, logic, renames, resets, ren_rows, ov_rows
 
 
-def correct_ticker(produto, renames):
+RECEIPT_RE = re.compile(r"^[A-Z]{4}1[23]$")               # FII subscription receipt codes
+
+def raw_ticker(produto):
     if not isinstance(produto, str): return None
     p = produto.strip()
-    code = p[:30].strip() if norm(p).startswith("tesouro") else p[:6].strip()
-    m = re.match(r"^([A-Z]{4})1[23]$", code)              # FII subscription receipt -> 11
-    if m: code = m.group(1) + "11"
+    return p[:30].strip() if norm(p).startswith("tesouro") else p[:6].strip()
+
+def correct_ticker(produto, renames):
+    code = raw_ticker(produto)
+    if code is None: return None
+    if RECEIPT_RE.match(code): code = code[:4] + "11"      # fold receipt -> main
     return renames.get(code, code)
 
 def detect_tipo(sheet_name):
@@ -142,12 +163,19 @@ def build_movements(mov_path, classification, renames, resets, year):
     raw["quantity"] = pd.to_numeric(raw["quantity"], errors="coerce").fillna(0.0)
     raw["unit_price"] = pd.to_numeric(raw["unit_price"], errors="coerce")
     raw["amount"] = pd.to_numeric(raw["amount"], errors="coerce").fillna(0.0)
+    raw["raw_ticker"] = raw["product"].map(raw_ticker)
     raw["ticker"] = raw["product"].map(lambda p: correct_ticker(p, renames))
 
     unknown = sorted({m for m in raw["entry_movement"].dropna().unique() if m not in classification})
     def classify(r):
         cred, deb = classification.get(r["entry_movement"], ("no_action","no_action"))
-        return cred if str(r["entry_type"]).startswith("Cred") else deb
+        action = cred if str(r["entry_type"]).startswith("Cred") else deb
+        # Transferência - Liquidação Debito on a RECEIPT code (XXXX12/13): receipt being
+        # consumed in the conversion to the main cota — not a sale of the main position.
+        if (action == "sale" and r["entry_movement"] == "Transferência - Liquidação"
+                and RECEIPT_RE.match(r["raw_ticker"] or "")):
+            return "no_action"
+        return action
     raw["emt"] = raw.apply(classify, axis=1)
     raw["amount_adjusted"] = raw.apply(
         lambda r: r["amount"] if str(r["entry_type"]).startswith("Cred") else -r["amount"], axis=1)
@@ -160,9 +188,12 @@ def build_movements(mov_path, classification, renames, resets, year):
         return (0.0, 0.0)
     raw = pd.concat([raw, raw.apply(lambda r: pd.Series(deltas(r), index=["dq","dc"]), axis=1)], axis=1)
 
-    # custody transfers: matched in/out pairs cancel; a lone leg is a real qty change
+    # custody transfers: matched in/out pairs cancel; a lone leg is a real qty change.
+    # Skip receipt codes (XXXX12/13): a Transferência there is about the right, not the main cota.
     raw["tr_dq"] = 0.0
-    trmask = raw["emt"].eq("no_action") & raw["entry_movement"].isin(["Transferência","Transferencia"])
+    trmask = (raw["emt"].eq("no_action")
+              & raw["entry_movement"].isin(["Transferência","Transferencia"])
+              & ~raw["raw_ticker"].fillna("").str.match(RECEIPT_RE.pattern))
     net = {}
     for _, r in raw[trmask].iterrows():
         k = (r["date"], r["ticker"])
@@ -181,20 +212,37 @@ def build_movements(mov_path, classification, renames, resets, year):
     reset_by_date = {}
     for (tk, d), (qty, avg, *_ ) in resets.items():
         reset_by_date.setdefault(pd.Timestamp(d), {})[tk] = (qty, avg)
-    for d, g in chrono.groupby("date", sort=True):
-        for _, r in g.iterrows():
-            tk = r["ticker"]; cy = cyc.get(tk,1)
-            q = qa.get(tk,0.0) + r["dq"]; c = ca.get(tk,0.0) + r["dc"]
-            if abs(q) < 1e-9 and qa.get(tk,0.0) > 1e-9: closed[tk] = True
-            if r["dq"] > 0 and qa.get(tk,0.0) <= 1e-9 and closed.get(tk): cy += 1; closed[tk] = False
-            qa[tk], ca[tk], cyc[tk] = q, c, cy
+    # process the UNION of movement dates and cost_reset dates (resets on empty days still apply)
+    date_to_group = {d: g for d, g in chrono.groupby("date", sort=True)}
+    for d in sorted(set(date_to_group) | set(reset_by_date)):
+        g = date_to_group.get(d)
+        if g is not None:
+            for _, r in g.iterrows():
+                tk = r["ticker"]; cy = cyc.get(tk,1)
+                q = qa.get(tk,0.0) + r["dq"]; c = ca.get(tk,0.0) + r["dc"]
+                if abs(q) < 1e-9 and qa.get(tk,0.0) > 1e-9: closed[tk] = True
+                if r["dq"] > 0 and qa.get(tk,0.0) <= 1e-9 and closed.get(tk): cy += 1; closed[tk] = False
+                qa[tk], ca[tk], cyc[tk] = q, c, cy
         for tk, (qty, avg) in reset_by_date.get(d, {}).items():
             qa[tk] = qty; ca[tk] = round(qty*avg,2); cyc[tk] = cyc.get(tk,1) + 1
-        for _, r in g.iterrows():
-            tk = r["ticker"]; q = qa[tk]; c = ca[tk]
-            QA[r["_ord"]] = round(q,4); CA[r["_ord"]] = round(c,2)
-            AV[r["_ord"]] = round(c/q,6) if abs(q) > 1e-9 else None
-            CY[r["_ord"]] = cyc[tk]
+        if g is not None:
+            for _, r in g.iterrows():
+                tk = r["ticker"]; q = qa[tk]; c = ca[tk]
+                QA[r["_ord"]] = round(q,4); CA[r["_ord"]] = round(c,2)
+                AV[r["_ord"]] = round(c/q,6) if abs(q) > 1e-9 else None
+                CY[r["_ord"]] = cyc[tk]
+    # cost_resets applied AFTER a ticker's last movement (e.g. on the year-end date) won't
+    # show in the row snapshots — propagate the final qa/ca state to the last row of each
+    # affected ticker so summary/reconciliation reflect them.
+    cutoff_ts = pd.Timestamp(year,12,31)
+    for tk in list(qa.keys()):
+        sub = raw[(raw["ticker"] == tk) & (raw["date"] <= cutoff_ts)].sort_values(["date","_ord"])
+        if len(sub):
+            last_ord = sub.iloc[-1]["_ord"]
+            q, c = qa[tk], ca[tk]
+            QA[last_ord] = round(q,4); CA[last_ord] = round(c,2)
+            AV[last_ord] = round(c/q,6) if abs(q) > 1e-9 else None
+            CY[last_ord] = cyc.get(tk,1)
     raw["quantity_accumulated"] = raw["_ord"].map(QA)
     raw["amount_adjusted"] = raw["amount_adjusted"].round(2)
     raw["avg_price"] = raw["_ord"].map(AV)
@@ -252,7 +300,7 @@ def hdr(ws, n, fill):
     for j in range(1,n+1):
         ws.cell(1,j).fill=f; ws.cell(1,j).font=ft; ws.cell(1,j).alignment=Alignment(horizontal="center")
 
-def write_workbook(out_path, mov, summary, blocks, classification, logic, ren_rows, ov_rows):
+def write_workbook(out_path, mov, summary, blocks, classification, logic, ren_rows, ov_rows, year):
     wb = Workbook()
 
     ws = wb.active; ws.title = "movements_to_avg_price"
@@ -328,6 +376,38 @@ def write_workbook(out_path, mov, summary, blocks, classification, logic, ren_ro
             "Instituição":24,"tipo":11,"Código de Negociação":16}.get(col,15)
     ps.freeze_panes = "A2"
 
+    # Reconciliation: posição vs movimentação por ticker (revela renames/eventos faltando)
+    rc = wb.create_sheet("Reconciliation")
+    rc.append(["ticker","tipo","position_qty","movement_qty_year_end","diff","status"])
+    hdr(rc, 6, LPURPLE)
+    cut = pd.Timestamp(year, 12, 31)
+    pos_q, pos_tipo = {}, {}
+    for tipo,_,rows in blocks:
+        for d in rows:
+            tk = getcol(d,"Código de Negociação","Codigo de Negociacao") or str(getcol(d,"Produto") or "").strip()
+            q = getcol(d,"Quantidade") or 0
+            if tk and isinstance(q,(int,float)):
+                pos_q[tk] = pos_q.get(tk,0) + q                   # SOMA se ticker tem multiplas linhas
+                pos_tipo[tk] = tipo
+    mov_yq = {}
+    for tk, sub in mov.groupby("ticker"):
+        s = sub[sub["date"] <= cut].sort_values(["date","_ord"])
+        if len(s) and pd.notna(s.iloc[-1]["quantity_accumulated"]):
+            mov_yq[tk] = float(s.iloc[-1]["quantity_accumulated"])
+    for tk in sorted(set(pos_q) | set(mov_yq)):
+        tipo = pos_tipo.get(tk, "—")
+        if tipo == "RENDA FIXA": continue
+        pq, mq = pos_q.get(tk), mov_yq.get(tk)
+        pq_v, mq_v = (pq or 0), (mq or 0)
+        diff = round(mq_v - pq_v, 4)
+        if pq is None: status = "só na movimentação (vendido ou rename faltando?)"
+        elif mq is None: status = "só na posição (rename faltando?)"
+        elif abs(diff) < 1e-6: status = "OK"
+        else: status = "DIFERE"
+        rc.append([tk, tipo, pq, mq, diff, status])
+    for c,w in zip(range(1,7),[14,12,14,22,10,46]): rc.column_dimensions[get_column_letter(c)].width=w
+    rc.freeze_panes = "A2"
+
     ir = wb.create_sheet("IRPF")
     ir.append(["ticker","grupo","codigo","localizacao","cnpj","discriminacao","valor"]); hdr(ir,7,LPURPLE)
     for tipo,headers,rows in blocks:
@@ -361,7 +441,7 @@ def main():
     year = a.year or int(pd.to_datetime(peek["date"], dayfirst=True, errors="coerce").dt.year.max())
     mov, summary, unknown = build_movements(a.movimentacao, classification, renames, resets, year)
     blocks = load_position(a.posicao)
-    write_workbook(a.saida, mov, summary, blocks, classification, logic, ren_rows, ov_rows)
+    write_workbook(a.saida, mov, summary, blocks, classification, logic, ren_rows, ov_rows, year)
     print(f"OK -> {a.saida}  (fiscal year {year}, {len(mov)} movement rows, "
           f"{sum(len(r) for _,_,r in blocks)} positions, "
           f"{len(renames)} renames, {len(resets)} cost resets)")

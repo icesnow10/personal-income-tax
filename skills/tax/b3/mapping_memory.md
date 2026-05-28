@@ -27,12 +27,13 @@ Actions and their effect on the position:
 | Desdobro | purchase | sale | desdobramento: aumenta a quantidade com custo zero (dilui o preço médio) |
 | Grupamento | purchase | sale | grupamento: reduz a quantidade com custo zero (eleva o preço médio) |
 | Fração em Ativos | purchase | sale | ajuste de fração na quantidade, sem alterar o custo total |
-| Leilão de Fração | purchase | sale | venda da fração leiloada: reduz a quantidade |
-| Direitos de Subscrição - Exercido | purchase | sale | exercício de direito: compra de cotas (aumenta a quantidade e o custo) |
-| Recibo de Subscrição | purchase | sale | recibo do exercício: vira a cota principal (aumenta a quantidade e o custo) |
-| Solicitação de Subscrição | purchase | sale | pagamento da subscrição: compra (aumenta a quantidade e o custo) |
+| Leilão de Fração | no_action | no_action | venda da fração leiloada: registra só o caixa (a quantidade saiu via Fração em Ativos) |
+| Direitos de Subscrição - Exercido | no_action | no_action | passo de processo (direito consumido): a quantidade chega via Recibo de Subscrição |
+| Recibo de Subscrição | purchase | no_action | crédito: cota recebida na subscrição (+qtd). débito: recibo consumido na conversão para a cota principal (neutro) |
+| Solicitação de Subscrição | no_action | no_action | passo de processo (solicitação): a quantidade chega via Recibo de Subscrição |
 | Resgate | sale | sale | redenção de cotas: saída da posição (reduz a quantidade e o custo) |
 | Amortização | return_of_capital | return_of_capital | devolução de capital: reduz o custo e mantém a quantidade |
+| AMORTIZAÇÃO | return_of_capital | return_of_capital | amortização (variante em maiúsculas, renda fixa): devolução de capital, reduz o custo |
 | Restituição de Capital | return_of_capital | return_of_capital | devolução de capital: reduz o custo e mantém a quantidade |
 | Restituição de Capital - Transferida | return_of_capital | return_of_capital | devolução de capital: reduz o custo e mantém a quantidade |
 | Rendimento | yield | yield | rendimento: não altera quantidade nem custo |
@@ -41,6 +42,7 @@ Actions and their effect on the position:
 | Dividendo - Transferido | dividend | dividend | provento: não altera quantidade nem custo |
 | Juros Sobre Capital Próprio | interest_on_equity | interest_on_equity | provento (JCP): não altera quantidade nem custo |
 | Juros Sobre Capital Próprio - Transferido | interest_on_equity | interest_on_equity | provento (JCP): não altera quantidade nem custo |
+| PAGAMENTO DE JUROS | yield | yield | pagamento de juros de renda fixa (debênture/CRA): provento, não altera quantidade nem custo |
 | Atualização | no_action | no_action | atualização de posição: sem efeito no custo ou quantidade |
 | Cessão de Direitos | no_action | no_action | cessão de direitos de subscrição: não afeta a posição principal |
 | Cessão de Direitos - Solicitada | no_action | no_action | evento neutro: não altera quantidade nem custo |
@@ -53,3 +55,5 @@ Actions and their effect on the position:
 | TRANSFERENCIA SEM FINANCEIRO | no_action | no_action | transferência sem financeiro: neutra |
 | VENCIMENTO | no_action | no_action | vencimento de renda fixa: fora deste controle |
 | COMPRA / VENDA | no_action | no_action | renda fixa (CDB): fora do controle de ações/FII |
+| COMPRA/VENDA | no_action | no_action | renda fixa (CRA/CDB/debênture): fora do controle de ações/FII |
+| COMPRA/VENDA DEFINITIVA/CESSAO | no_action | no_action | renda fixa (CRA/debênture): fora do controle de ações/FII |
