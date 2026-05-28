@@ -8,7 +8,7 @@ Built from the **Movimentação** history, chronologically, per **current ticker
 
 1. **Ticker correction** — `code = TRIM(LEFT(Produto,6))` (treasury keeps its name). Fold FII
    subscription receipts `^([A-Z]{4})1[23]$ → \1 + "11"`. Then apply explicit **renames**
-   (`overrides.csv`, `kind=rename`). Renames cover code changes the heuristic can't: fund
+   (`ticker_memory.md`). Renames cover code changes the heuristic can't: fund
    incorporations (e.g. one fund's ticker becomes another's), BDR renames, PN→ON conversions.
 
 2. **Classify each row** → an action, from `entry_movement` + Entrada/Saída (Credito/Debito):
@@ -34,31 +34,36 @@ Built from the **Movimentação** history, chronologically, per **current ticker
 4. **Custody transfers** (`Transferência`/`Transferencia`, no price): matched in/out pairs on a
    date net to zero; a **lone** leg is a real quantity change (e.g. a single bonus cota).
 
-5. **Corporate-action cost_reset** (`overrides_memory.md`): on the given date, the ticker's
-   accumulated state is **set** to `(qty, qty×avg_price)`. Use for a merger/incorporação where
-   the *fato relevante* defines a new acquisition cost (e.g. patrimonial value) instead of
-   preserving the historical cost. **Verify the value against the fato relevante.**
+5. **No cost-basis overrides.** Mergers / incorporações that reset the cost basis (e.g. fato
+   relevante setting a patrimonial value) are NOT auto-applied — the engine sticks to the B3
+   data. The **audit** at the end of the run lists every ticker whose accumulated quantity
+   doesn't match the year-end Posição; the user investigates and adjusts the IRPF row by hand
+   for those (typically a small number of corporate-action edge cases).
 
 ## 2. Living-memory files (markdown tables)
 
-The three memories are the single source of truth; the script reads them (via `--memory-dir`,
+The two memories are the single source of truth; the script reads them (via `--memory-dir`,
 default = current folder) and writes them into the `aux_mapping` sheet. Each is a markdown file
 with **one data table** (extra explanatory tables are ignored — the data table is picked by its
 key column). Edit the tables to teach the tool; never edit the code.
 
 | File | Key column | Columns | Fallback |
 |---|---|---|---|
-| `mapping_memory.md` | `entry_movement` | `entry_movement, credito, debito, logic` | bundled copy |
+| `mapping_memory.md` | `entry_movement` | `entry_movement, credito, debito, provento_type, logic` | bundled copy |
 | `ticker_memory.md` | `from_ticker` | `from_ticker, to_ticker, note, source` | none → empty + warn |
-| `overrides_memory.md` | `ticker` | `ticker, date (YYYY-MM-DD), qty, avg_price, note, source` | none → empty + warn |
 
-`note`/`source` are documentation (link to the fato relevante / B3), echoed into `aux_mapping`
-for traceability. Handled **without** any entry: FII subscription receipts (12/13→11),
+The two axes per row in `mapping_memory.md`: **action** (`credito`/`debito` → purchase / sale /
+return_of_capital / no_action) moves the position; **provento_type** (dividend /
+interest_on_equity / yield / return_of_capital) labels the row as income for the
+`income_received` summary. They are orthogonal — proventos have action = no_action but a
+provento_type set.
+
+`note`/`source` in `ticker_memory.md` are documentation (link to B3 / fato relevante), echoed
+into `aux_mapping`. Handled **without** any entry: FII subscription receipts (12/13→11),
 splits/grupamentos, amortizações (return of capital), and lone bonus cotas.
 
-The bundled `mapping_memory.md` is generic and shared; `ticker_memory.md` / `overrides_memory.md`
-ship as **templates** with illustrative rows — copy to your working folder and replace with your
-own (don't commit a taxpayer's real ones).
+The bundled `mapping_memory.md` is generic and shared; `ticker_memory.md` ships as a template —
+copy to your working folder and replace with your own (don't commit a taxpayer's real one).
 
 ## 3. Position blocks & IRPF mapping
 
@@ -86,15 +91,23 @@ discriminação; treasury has none. Edge cases to confirm with an accountant: **
 - BDR: same, but `- ISIN {isin}` instead of CNPJ.
 - renda fixa: `APLICACAO EM {produto} NA CORRETORA {corretora}`.
 
-## 4. Validation
+## 4. Audit (built-in)
 
-- Year-end quantities in `avg_price_summary` must equal the `Posição` quantities (the two
-  sources are independent — a mismatch means a movement was mis-classified or a corporate action
-  is missing from `overrides_memory.md`).
-- No `avg_price` should resemble a market quote — it must be the cost basis.
-- The script prints `WARNING: unmapped entry_movement` for any movement type missing from
-  `mapping_memory.md`; add a row there with the right action (do not edit the code).
-- Ending qty = opening + purchases − sales (± splits/conversions) ≥ 0.
+At the end of each run, the script prints **AUDIT: N/M OK** comparing the year-end quantity
+accumulated from movements vs the Posição quantity, per main ticker (renda fixa is excluded —
+it is declared from Valor Aplicado / Valor Atualizado, not derived from movements). The same
+comparison is in the workbook's `Reconciliation` sheet.
+
+A mismatch means one of:
+- a rename is missing (`ticker_memory.md` doesn't fold an old code into the current one)
+- the corporate action isn't representable by the simple action rules (e.g. merger that resets
+  cost basis, exotic restructure, conversion ratio ≠ 1:1)
+- an unmapped `entry_movement` (the script prints `WARNING: unmapped …` separately)
+
+The engine does **not** auto-override the data; surface and adjust the IRPF row by hand.
+
+Additional checks: no `avg_price` should resemble a market quote — it must be the cost basis;
+ending qty = opening + purchases − sales (± corporate actions) ≥ 0.
 
 ## 5. Files
 
@@ -102,8 +115,7 @@ discriminação; treasury has none. Edge cases to confirm with an accountant: **
 b3/
 ├── SKILL.md
 ├── REFERENCE.md
-├── mapping_memory.md                 # generic B3 movement→action table (shared, bundled)
+├── mapping_memory.md                 # generic B3 movement→action+provento_type table (shared, bundled)
 ├── ticker_memory.md                  # template — renames (copy to your working folder, fill)
-├── overrides_memory.md               # template — cost resets (copy to your working folder, fill)
 └── scripts/build_bens_direitos.py    # MOV.xlsx POS.xlsx OUT.xlsx [--memory-dir DIR] [--year Y]
 ```

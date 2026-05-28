@@ -42,11 +42,6 @@ EMPTY_TEMPLATES = {
    "Explicit renames the engine can't infer (fund mergers, BDR renames, PN→ON). FII subscription\n"
    "receipts (XXXX12 / XXXX13 → XXXX11) are folded automatically — no row needed. Add yours:\n\n"
    "| from_ticker | to_ticker | note | source |\n|---|---|---|---|\n"),
- "overrides_memory.md": (
-   "# overrides_memory — corporate-action cost resets\n\n"
-   "Mergers/incorporações where the fato relevante sets a NEW cost basis. On `date` the position\n"
-   "becomes (qty, qty×avg_price). Splits/amortizações/bonus cotas are automatic — not here. Add yours:\n\n"
-   "| ticker | date | qty | avg_price | note | source |\n|---|---|---|---|---|---|\n"),
 }
 
 
@@ -115,14 +110,7 @@ def load_memory(memory_dir, warn):
         f, t = d.get("from_ticker"), d.get("to_ticker")
         if f and t: renames[f] = t
         ren_rows.append(d)
-    resets, ov_rows = {}, []
-    for d in table_with(resolve_memory("overrides_memory.md", memory_dir, warn), "ticker"):
-        tk, date = d.get("ticker"), d.get("date")
-        if tk and date:
-            resets[(tk, date)] = (float(d["qty"]), float(d["avg_price"]),
-                                  d.get("note",""), d.get("source",""))
-        ov_rows.append(d)
-    return classification, logic, provento, renames, resets, ren_rows, ov_rows
+    return classification, logic, provento, renames, ren_rows
 
 
 RECEIPT_RE = re.compile(r"^[A-Z]{4}1[23]$")               # FII subscription receipt codes
@@ -155,7 +143,7 @@ def getcol(d, *candidates):
 
 
 # =========================== 1. movements -> avg price ===========================
-def build_movements(mov_path, classification, provento, renames, resets, year):
+def build_movements(mov_path, classification, provento, renames, year):
     raw = pd.read_excel(mov_path, sheet_name=0)
     raw.columns = ["entry_type","date","entry_movement","product","holder",
                    "quantity","unit_price","amount"][:len(raw.columns)]
@@ -215,40 +203,18 @@ def build_movements(mov_path, classification, provento, renames, resets, year):
     chrono = raw.sort_values(["date","_ord"], ascending=[True, False])
     qa, ca, cyc, closed = {}, {}, {}, {}
     QA, CA, AV, CY = {}, {}, {}, {}
-    reset_by_date = {}
-    for (tk, d), (qty, avg, *_ ) in resets.items():
-        reset_by_date.setdefault(pd.Timestamp(d), {})[tk] = (qty, avg)
-    # process the UNION of movement dates and cost_reset dates (resets on empty days still apply)
-    date_to_group = {d: g for d, g in chrono.groupby("date", sort=True)}
-    for d in sorted(set(date_to_group) | set(reset_by_date)):
-        g = date_to_group.get(d)
-        if g is not None:
-            for _, r in g.iterrows():
-                tk = r["ticker"]; cy = cyc.get(tk,1)
-                q = qa.get(tk,0.0) + r["dq"]; c = ca.get(tk,0.0) + r["dc"]
-                if abs(q) < 1e-9 and qa.get(tk,0.0) > 1e-9: closed[tk] = True
-                if r["dq"] > 0 and qa.get(tk,0.0) <= 1e-9 and closed.get(tk): cy += 1; closed[tk] = False
-                qa[tk], ca[tk], cyc[tk] = q, c, cy
-        for tk, (qty, avg) in reset_by_date.get(d, {}).items():
-            qa[tk] = qty; ca[tk] = round(qty*avg,2); cyc[tk] = cyc.get(tk,1) + 1
-        if g is not None:
-            for _, r in g.iterrows():
-                tk = r["ticker"]; q = qa[tk]; c = ca[tk]
-                QA[r["_ord"]] = round(q,4); CA[r["_ord"]] = round(c,2)
-                AV[r["_ord"]] = round(c/q,6) if abs(q) > 1e-9 else None
-                CY[r["_ord"]] = cyc[tk]
-    # cost_resets applied AFTER a ticker's last movement (e.g. on the year-end date) won't
-    # show in the row snapshots — propagate the final qa/ca state to the last row of each
-    # affected ticker so summary/reconciliation reflect them.
-    cutoff_ts = pd.Timestamp(year,12,31)
-    for tk in list(qa.keys()):
-        sub = raw[(raw["ticker"] == tk) & (raw["date"] <= cutoff_ts)].sort_values(["date","_ord"])
-        if len(sub):
-            last_ord = sub.iloc[-1]["_ord"]
-            q, c = qa[tk], ca[tk]
-            QA[last_ord] = round(q,4); CA[last_ord] = round(c,2)
-            AV[last_ord] = round(c/q,6) if abs(q) > 1e-9 else None
-            CY[last_ord] = cyc.get(tk,1)
+    for d, g in chrono.groupby("date", sort=True):
+        for _, r in g.iterrows():
+            tk = r["ticker"]; cy = cyc.get(tk,1)
+            q = qa.get(tk,0.0) + r["dq"]; c = ca.get(tk,0.0) + r["dc"]
+            if abs(q) < 1e-9 and qa.get(tk,0.0) > 1e-9: closed[tk] = True
+            if r["dq"] > 0 and qa.get(tk,0.0) <= 1e-9 and closed.get(tk): cy += 1; closed[tk] = False
+            qa[tk], ca[tk], cyc[tk] = q, c, cy
+        for _, r in g.iterrows():
+            tk = r["ticker"]; q = qa[tk]; c = ca[tk]
+            QA[r["_ord"]] = round(q,4); CA[r["_ord"]] = round(c,2)
+            AV[r["_ord"]] = round(c/q,6) if abs(q) > 1e-9 else None
+            CY[r["_ord"]] = cyc[tk]
     raw["quantity_accumulated"] = raw["_ord"].map(QA)
     raw["amount_adjusted"] = raw["amount_adjusted"].round(2)
     raw["avg_price"] = raw["_ord"].map(AV)
@@ -259,10 +225,15 @@ def build_movements(mov_path, classification, provento, renames, resets, year):
     summary = {}
     for tk, sub in raw.groupby("ticker"):
         s = sub[sub["date"] <= cut].sort_values(["date","_ord"])
-        avg = s.iloc[-1]["avg_price"] if len(s) else None
+        if len(s):
+            avg = s.iloc[-1]["avg_price"]
+            q   = s.iloc[-1]["quantity_accumulated"]
+        else:
+            avg, q = None, None
         # income comes from provento_type now (action axis is decoupled from income axis)
         inc = sub[sub["provento_type"].astype(bool)]["amount_adjusted"].sum()
-        summary[tk] = {"avg": (None if avg is None or pd.isna(avg) else float(avg)),
+        summary[tk] = {"qty": (None if q is None or pd.isna(q) else float(q)),
+                       "avg": (None if avg is None or pd.isna(avg) else float(avg)),
                        "income": round(float(inc),2)}
     return raw.sort_values("_ord"), summary, unknown
 
@@ -307,7 +278,7 @@ def hdr(ws, n, fill):
     for j in range(1,n+1):
         ws.cell(1,j).fill=f; ws.cell(1,j).font=ft; ws.cell(1,j).alignment=Alignment(horizontal="center")
 
-def write_workbook(out_path, mov, summary, blocks, classification, logic, provento, ren_rows, ov_rows, year):
+def write_workbook(out_path, mov, summary, blocks, classification, logic, provento, ren_rows, year):
     wb = Workbook()
 
     ws = wb.active; ws.title = "movements_to_avg_price"
@@ -328,13 +299,12 @@ def write_workbook(out_path, mov, summary, blocks, classification, logic, proven
     for row in ws.iter_rows(min_row=2, min_col=2, max_col=2): row[0].number_format = "yyyy-mm-dd"
     ws.freeze_panes = "A2"
 
-    # aux_mapping = the three living memories pasted in (movement→action | renames | cost resets)
+    # aux_mapping = the two living memories pasted in (movement→action | renames)
     cs = wb.create_sheet("aux_mapping")
     head = ["entry_movement","credito","debito","provento_type","logic", None,
-            "from_ticker","to_ticker","rename note","rename source", None,
-            "reset ticker","reset date","qty","avg_price","reset note","reset source"]
+            "from_ticker","to_ticker","rename note","rename source"]
     cs.append(head)
-    for col in [1,2,3,4,5,7,8,9,10,12,13,14,15,16,17]:
+    for col in [1,2,3,4,5,7,8,9,10]:
         cs.cell(1,col).fill=PatternFill("solid",fgColor=LPURPLE); cs.cell(1,col).font=Font(bold=True)
     items = list(classification.items())
     for i,(mv,(cr,db)) in enumerate(items, start=2):
@@ -343,18 +313,16 @@ def write_workbook(out_path, mov, summary, blocks, classification, logic, proven
     for i,d in enumerate(ren_rows, start=2):
         cs.cell(i,7,d.get("from_ticker")); cs.cell(i,8,d.get("to_ticker"))
         cs.cell(i,9,d.get("note")); cs.cell(i,10,d.get("source"))
-    for i,d in enumerate(ov_rows, start=2):
-        cs.cell(i,12,d.get("ticker")); cs.cell(i,13,d.get("date")); cs.cell(i,14,d.get("qty"))
-        cs.cell(i,15,d.get("avg_price")); cs.cell(i,16,d.get("note")); cs.cell(i,17,d.get("source"))
-    for c,w in zip(range(1,18),[42,14,14,18,55,3,12,12,30,34,3,12,12,8,10,34,34]):
+    for c,w in zip(range(1,11),[42,14,14,18,55,3,12,12,30,34]):
         cs.column_dimensions[get_column_letter(c)].width = w
 
     sm = wb.create_sheet("avg_price_summary")
-    sm.append(["ticker","latest_avg_price","income_received"]); hdr(sm,3,LPURPLE)
+    sm.append(["ticker","latest_accumulated_quantity","latest_avg_price","income_received"]); hdr(sm,4,LPURPLE)
     is_code = lambda t: isinstance(t,str) and " " not in t and len(t) <= 6
     for tk in sorted(k for k in summary if summary[k]["avg"] is not None and is_code(k)):
-        sm.append([tk, round(summary[tk]["avg"],6), summary[tk]["income"]])
-    for c,w in zip(range(1,4),[14,18,16]): sm.column_dimensions[get_column_letter(c)].width = w
+        s = summary[tk]
+        sm.append([tk, s["qty"], round(s["avg"],6), s["income"]])
+    for c,w in zip(range(1,5),[14,26,18,16]): sm.column_dimensions[get_column_letter(c)].width = w
 
     union = []
     for _,headers,_ in blocks:
@@ -445,21 +413,42 @@ def main():
     ap.add_argument("--year", type=int)
     a = ap.parse_args()
     warn = []
-    classification, logic, provento, renames, resets, ren_rows, ov_rows = load_memory(a.memory_dir, warn)
+    classification, logic, provento, renames, ren_rows = load_memory(a.memory_dir, warn)
     peek = pd.read_excel(a.movimentacao, sheet_name=0)
     peek.columns = ["entry_type","date","entry_movement","product","holder",
                     "quantity","unit_price","amount"][:len(peek.columns)]
     year = a.year or int(pd.to_datetime(peek["date"], dayfirst=True, errors="coerce").dt.year.max())
-    mov, summary, unknown = build_movements(a.movimentacao, classification, provento, renames, resets, year)
+    mov, summary, unknown = build_movements(a.movimentacao, classification, provento, renames, year)
     blocks = load_position(a.posicao)
-    write_workbook(a.saida, mov, summary, blocks, classification, logic, provento, ren_rows, ov_rows, year)
+    write_workbook(a.saida, mov, summary, blocks, classification, logic, provento, ren_rows, year)
     print(f"OK -> {a.saida}  (fiscal year {year}, {len(mov)} movement rows, "
-          f"{sum(len(r) for _,_,r in blocks)} positions, "
-          f"{len(renames)} renames, {len(resets)} cost resets)")
+          f"{sum(len(r) for _,_,r in blocks)} positions, {len(renames)} renames)")
     for w in warn: print("NOTE:", w)
     if unknown:
         print("WARNING: unmapped entry_movement (treated as no_action) — add to mapping_memory.md:\n  "
               + "\n  ".join(unknown))
+    # ------------------------- AUDIT: movements vs position -------------------------
+    pos_q, pos_tipo = {}, {}
+    for tipo,_,rows in blocks:
+        for d in rows:
+            tk = getcol(d,"Código de Negociação","Codigo de Negociacao")
+            q  = getcol(d,"Quantidade") or 0
+            if tk and isinstance(q,(int,float)) and tipo != "RENDA FIXA":
+                pos_q[tk] = pos_q.get(tk,0) + q
+                pos_tipo[tk] = tipo
+    mismatches = []
+    for tk, pq in sorted(pos_q.items()):
+        mq = (summary.get(tk) or {}).get("qty") or 0
+        if abs(mq - pq) > 1e-6:
+            mismatches.append((tk, pos_tipo[tk], pq, mq, round(mq - pq, 4)))
+    ok = len(pos_q) - len(mismatches)
+    print(f"\nAUDIT (quantity in movements vs position): {ok}/{len(pos_q)} OK")
+    if mismatches:
+        print("  Mismatches need attention before declaring in IRPF:")
+        for tk,tp,pq,mq,d in mismatches:
+            print(f"    {tk:8} ({tp:5}) position={pq}  movements={mq}  diff={d:+}")
+    else:
+        print("  All main-ticker quantities match the year-end position.")
 
 
 if __name__ == "__main__":
