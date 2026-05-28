@@ -215,11 +215,53 @@ def build_movements(mov_path, classification, provento, renames, year):
             QA[r["_ord"]] = round(q,4); CA[r["_ord"]] = round(c,2)
             AV[r["_ord"]] = round(c/q,6) if abs(q) > 1e-9 else None
             CY[r["_ord"]] = cyc[tk]
+    raw["provento_type"] = raw["entry_movement"].map(lambda m: provento.get(m, ""))
+
+    # B3 reports the actual position quantity in "snapshot" rows — Atualização AND any
+    # provento row (Rendimento / Dividendo / JCP / Amortização — qty = position at the
+    # distribution date). We anchor the ticker's qty to B3's snapshot only when the LAST
+    # chronological event for the ticker is a snapshot — that means B3 reasserts the
+    # position after all purchases/sales/corporate actions, which is the case after a
+    # merger or restructure. If the last event is a buy/sale, the script's plain
+    # accumulation is more reliable than an older snapshot. We sum snapshots on the same
+    # latest date to handle tickers split across multiple lots/brokers.
+    cutoff_ts = pd.Timestamp(year, 12, 31)
+    # When the script's accumulation produces a clearly invalid qty (negative — a tell-tale
+    # sign of a corporate-action sequence the rules can't decode, e.g. a Resgate that follows
+    # a merger), trust B3's latest snapshot. The snapshot comes from a provento row
+    # (Rendimento / Dividendo / JCP / Amortização) where qty = position at the distribution
+    # date, summed across holders to handle lots split across brokers. Restituição is
+    # excluded because some companies (e.g. Telefônica) use a pre-restructure base date.
+    # For non-negative cases we trust the script; mismatches surface in the AUDIT for the
+    # user to investigate (grupamentos with ratios, exotic restructures).
+    SNAP_MOVS = {"Rendimento","Rendimento - Transferido",
+                 "Dividendo","Dividendo - Transferido",
+                 "Juros Sobre Capital Próprio","Juros Sobre Capital Próprio - Transferido",
+                 "Atualização","Amortização","AMORTIZAÇÃO","PAGAMENTO DE JUROS"}
+    is_snap = raw["entry_movement"].isin(SNAP_MOVS) & (raw["quantity"] > 0)
+    for tk in list(qa.keys()):
+        if qa[tk] >= 0: continue                           # script's qty is plausible — keep it
+        sub = raw[(raw["ticker"] == tk) & (raw["date"] <= cutoff_ts)].sort_values(["date","_ord"])
+        if not len(sub): continue
+        latest_snap_date = sub[is_snap.loc[sub.index]]["date"].max()
+        if pd.isna(latest_snap_date): continue
+        snap_rows = sub[(sub["date"] == latest_snap_date) & is_snap.loc[sub.index]]
+        qa[tk] = float(snap_rows.groupby("holder")["quantity"].first().sum())
+    # Propagate anchored state to the last row of each ticker so movements_to_avg_price and
+    # avg_price_summary reflect the anchor (avg = accumulated_cost / anchored_qty).
+    for tk in qa:
+        sub = raw[(raw["ticker"] == tk) & (raw["date"] <= cutoff_ts)].sort_values(["date","_ord"])
+        if len(sub):
+            last_ord = sub.iloc[-1]["_ord"]
+            q, c = qa[tk], ca[tk]
+            QA[last_ord] = round(q, 4)
+            AV[last_ord] = round(c/q, 6) if abs(q) > 1e-9 else None
+            CY[last_ord] = cyc.get(tk, 1)
+
     raw["quantity_accumulated"] = raw["_ord"].map(QA)
     raw["amount_adjusted"] = raw["amount_adjusted"].round(2)
     raw["avg_price"] = raw["_ord"].map(AV)
     raw["cycle"] = raw["_ord"].map(CY)
-    raw["provento_type"] = raw["entry_movement"].map(lambda m: provento.get(m, ""))
 
     cut = pd.Timestamp(year,12,31)
     summary = {}
