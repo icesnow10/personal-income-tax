@@ -200,53 +200,34 @@ def build_movements(mov_path, classification, provento, renames, year):
         if abs(net.get(k,0.0)) > 1e-9: raw.at[idx,"tr_dq"] = net[k]
     raw["dq"] = raw["dq"] + raw["tr_dq"]
 
-    # Pre-compute the snapshot anchor per ticker: the LATEST snapshot date with no purchase/
-    # sale after it (if any buy/sell happens later, the snapshot is stale — don't anchor).
-    cutoff_ts = pd.Timestamp(year, 12, 31)
-    anchor = {}
-    for tk in raw["ticker"].dropna().unique():
-        sub = raw[(raw["ticker"] == tk) & (raw["date"] <= cutoff_ts)]
-        snaps = sub[sub["emt"] == "snapshot"]
-        if not len(snaps): continue
-        latest_snap_date = snaps["date"].max()
-        if len(sub[(sub["date"] > latest_snap_date) & sub["emt"].isin(["purchase","sale"])]):
-            continue
-        snap_rows = sub[(sub["date"] == latest_snap_date) & (sub["emt"] == "snapshot") & (sub["quantity"] > 0)]
-        if len(snap_rows):
-            anchor[tk] = (latest_snap_date,
-                          float(snap_rows.groupby("holder")["quantity"].first().sum()))
-
-    chrono = raw.sort_values(["date","_ord"], ascending=[True, False])
+    chrono = raw.sort_values(["date","_ord"], ascending=[True, True])
     qa, ca, cyc, closed = {}, {}, {}, {}
     QA, CA, AV, CY = {}, {}, {}, {}
     last_pos_avg = {}                                   # last avg seen with qty>0 per ticker
-    for d, g in chrono.groupby("date", sort=True):
-        for _, r in g.iterrows():
-            tk = r["ticker"]; cy = cyc.get(tk,1)
+    # Single chronological pass: apply this row's effect on (qty, cost), then snapshot to QA/AV.
+    # A `snapshot` row overrides qa to the row's quantity (B3 reasserts the position); other
+    # rows apply their delta. Cost accumulates from purchases/sales only (snapshot keeps cost).
+    for _, r in chrono.iterrows():
+        tk = r["ticker"]; cy = cyc.get(tk, 1)
+        if r["emt"] == "snapshot":
+            qa[tk] = float(r["quantity"])
+        else:
             q = qa.get(tk,0.0) + r["dq"]; c = ca.get(tk,0.0) + r["dc"]
             if abs(q) < 1e-9 and qa.get(tk,0.0) > 1e-9: closed[tk] = True
             if r["dq"] > 0 and qa.get(tk,0.0) <= 1e-9 and closed.get(tk): cy += 1; closed[tk] = False
             qa[tk], ca[tk], cyc[tk] = q, c, cy
-        # After the day's deltas are applied, anchor qty to B3's snapshot (Atualização) value
-        # if this date is the latest valid snapshot for the ticker. From this row onwards the
-        # ticker's qty reflects the anchored value, including the snapshot row itself in the
-        # output below and all subsequent rows.
-        for tk_a, (a_date, a_qty) in anchor.items():
-            if a_date == d: qa[tk_a] = a_qty
-        for _, r in g.iterrows():
-            tk = r["ticker"]; q = qa[tk]; c = ca[tk]
-            if q > 1e-9:
-                av = round(c/q, 6); last_pos_avg[tk] = av
-            else:
-                # qty=0 or negative — no current position. Carry forward the last positive
-                # avg of this ticker (sold-out tickers keep their historical PM; brief
-                # transition states during corporate actions stay readable). Tickers that
-                # never had a positive position (renda fixa with action=no_action, folded
-                # receipts) stay blank.
-                av = last_pos_avg.get(tk)
-            QA[r["_ord"]] = round(q,4); CA[r["_ord"]] = round(c,2)
-            AV[r["_ord"]] = av
-            CY[r["_ord"]] = cyc[tk]
+        # snapshot for output
+        q = qa[tk]; c = ca.get(tk, 0.0)
+        if q > 1e-9:
+            av = round(c/q, 6); last_pos_avg[tk] = av
+        else:
+            # qty=0 or negative — carry forward last positive avg of this ticker (sold-out
+            # tickers keep their historical PM; brief transition states stay readable).
+            # Tickers that never had a positive position (renda fixa, folded receipts) stay blank.
+            av = last_pos_avg.get(tk)
+        QA[r["_ord"]] = round(q, 4); CA[r["_ord"]] = round(c, 2)
+        AV[r["_ord"]] = av
+        CY[r["_ord"]] = cyc.get(tk, 1)
     raw["provento_type"] = raw["entry_movement"].map(lambda m: provento.get(m, ""))
     raw["quantity_accumulated"] = raw["_ord"].map(QA)
     raw["amount_adjusted"] = raw["amount_adjusted"].round(2)
