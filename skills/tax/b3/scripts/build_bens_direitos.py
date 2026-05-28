@@ -184,7 +184,12 @@ def build_movements(mov_path, classification, renames, resets, year):
         e = r["emt"]
         if e == "purchase":          return ( r["quantity"],  r["amount"])
         if e == "sale":              return (-r["quantity"], -r["amount"])
-        if e == "return_of_capital": return ( 0.0, -r["amount"])
+        if e == "return_of_capital":
+            # signed by entry_type so a Credito+Debito pair (e.g. Restituição de Capital -
+            # Transferida bookkeeping) nets to zero. Single Credito reduces cost; single
+            # Debito (rare reversal) adds cost back.
+            cred = str(r["entry_type"]).startswith("Cred")
+            return ( 0.0, -r["amount"] if cred else r["amount"])
         return (0.0, 0.0)
     raw = pd.concat([raw, raw.apply(lambda r: pd.Series(deltas(r), index=["dq","dc"]), axis=1)], axis=1)
 
