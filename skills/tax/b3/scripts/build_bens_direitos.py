@@ -103,12 +103,13 @@ def resolve_memory(name, memory_dir, warn):
         return SKILL_DIR / name if (SKILL_DIR / name).exists() else None
 
 def load_memory(memory_dir, warn):
-    classification, logic = {}, {}
+    classification, logic, provento = {}, {}, {}
     for d in table_with(resolve_memory("mapping_memory.md", memory_dir, warn), "entry_movement"):
         mv = d.get("entry_movement")
         if not mv: continue
         classification[mv] = (d.get("credito","no_action"), d.get("debito","no_action"))
         logic[mv] = d.get("logic","")
+        provento[mv] = (d.get("provento_type") or "").strip()
     renames, ren_rows = {}, []
     for d in table_with(resolve_memory("ticker_memory.md", memory_dir, warn), "from_ticker"):
         f, t = d.get("from_ticker"), d.get("to_ticker")
@@ -121,7 +122,7 @@ def load_memory(memory_dir, warn):
             resets[(tk, date)] = (float(d["qty"]), float(d["avg_price"]),
                                   d.get("note",""), d.get("source",""))
         ov_rows.append(d)
-    return classification, logic, renames, resets, ren_rows, ov_rows
+    return classification, logic, provento, renames, resets, ren_rows, ov_rows
 
 
 RECEIPT_RE = re.compile(r"^[A-Z]{4}1[23]$")               # FII subscription receipt codes
@@ -154,7 +155,7 @@ def getcol(d, *candidates):
 
 
 # =========================== 1. movements -> avg price ===========================
-def build_movements(mov_path, classification, renames, resets, year):
+def build_movements(mov_path, classification, provento, renames, resets, year):
     raw = pd.read_excel(mov_path, sheet_name=0)
     raw.columns = ["entry_type","date","entry_movement","product","holder",
                    "quantity","unit_price","amount"][:len(raw.columns)]
@@ -252,14 +253,15 @@ def build_movements(mov_path, classification, renames, resets, year):
     raw["amount_adjusted"] = raw["amount_adjusted"].round(2)
     raw["avg_price"] = raw["_ord"].map(AV)
     raw["cycle"] = raw["_ord"].map(CY)
+    raw["provento_type"] = raw["entry_movement"].map(lambda m: provento.get(m, ""))
 
     cut = pd.Timestamp(year,12,31)
-    income_types = {"yield","dividend","interest_on_equity","return_of_capital"}
     summary = {}
     for tk, sub in raw.groupby("ticker"):
         s = sub[sub["date"] <= cut].sort_values(["date","_ord"])
         avg = s.iloc[-1]["avg_price"] if len(s) else None
-        inc = sub[sub["emt"].isin(income_types)]["amount_adjusted"].sum()
+        # income comes from provento_type now (action axis is decoupled from income axis)
+        inc = sub[sub["provento_type"].astype(bool)]["amount_adjusted"].sum()
         summary[tk] = {"avg": (None if avg is None or pd.isna(avg) else float(avg)),
                        "income": round(float(inc),2)}
     return raw.sort_values("_ord"), summary, unknown
@@ -305,21 +307,21 @@ def hdr(ws, n, fill):
     for j in range(1,n+1):
         ws.cell(1,j).fill=f; ws.cell(1,j).font=ft; ws.cell(1,j).alignment=Alignment(horizontal="center")
 
-def write_workbook(out_path, mov, summary, blocks, classification, logic, ren_rows, ov_rows, year):
+def write_workbook(out_path, mov, summary, blocks, classification, logic, provento, ren_rows, ov_rows, year):
     wb = Workbook()
 
     ws = wb.active; ws.title = "movements_to_avg_price"
     cols = ["entry_type","date","entry_movement","product","holder","quantity","unit_price","amount",
-            "ticker","entry_movement_type","quantity_accumulated","cycle","amount_adjusted","avg_price"]
+            "ticker","entry_movement_type","provento_type","quantity_accumulated","cycle","amount_adjusted","avg_price"]
     ws.append(cols); hdr(ws, 8, PURPLE)
-    for j in range(9,15):
+    for j in range(9, len(cols)+1):
         ws.cell(1,j).fill=PatternFill("solid",fgColor=LPURPLE); ws.cell(1,j).font=Font(bold=True)
         ws.cell(1,j).alignment=Alignment(horizontal="center")
     for _, r in mov.iterrows():
         ws.append([r["entry_type"], (r["date"].to_pydatetime() if pd.notna(r["date"]) else None),
                    r["entry_movement"], r["product"], r["holder"], float(r["quantity"]),
                    (None if pd.isna(r["unit_price"]) else float(r["unit_price"])), float(r["amount"]),
-                   r["ticker"], r["emt"],
+                   r["ticker"], r["emt"], (r["provento_type"] or None),
                    (None if pd.isna(r["quantity_accumulated"]) else float(r["quantity_accumulated"])),
                    (None if pd.isna(r["cycle"]) else int(r["cycle"])), float(r["amount_adjusted"]),
                    (None if r["avg_price"] is None or pd.isna(r["avg_price"]) else float(r["avg_price"]))])
@@ -328,22 +330,23 @@ def write_workbook(out_path, mov, summary, blocks, classification, logic, ren_ro
 
     # aux_mapping = the three living memories pasted in (movement→action | renames | cost resets)
     cs = wb.create_sheet("aux_mapping")
-    head = ["entry_movement","credito","debito","logic", None,
+    head = ["entry_movement","credito","debito","provento_type","logic", None,
             "from_ticker","to_ticker","rename note","rename source", None,
             "reset ticker","reset date","qty","avg_price","reset note","reset source"]
     cs.append(head)
-    for col in [1,2,3,4,6,7,8,9,11,12,13,14,15,16]:
+    for col in [1,2,3,4,5,7,8,9,10,12,13,14,15,16,17]:
         cs.cell(1,col).fill=PatternFill("solid",fgColor=LPURPLE); cs.cell(1,col).font=Font(bold=True)
     items = list(classification.items())
     for i,(mv,(cr,db)) in enumerate(items, start=2):
-        cs.cell(i,1,mv); cs.cell(i,2,cr); cs.cell(i,3,db); cs.cell(i,4,logic.get(mv,""))
+        cs.cell(i,1,mv); cs.cell(i,2,cr); cs.cell(i,3,db)
+        cs.cell(i,4,provento.get(mv,"") or None); cs.cell(i,5,logic.get(mv,""))
     for i,d in enumerate(ren_rows, start=2):
-        cs.cell(i,6,d.get("from_ticker")); cs.cell(i,7,d.get("to_ticker"))
-        cs.cell(i,8,d.get("note")); cs.cell(i,9,d.get("source"))
+        cs.cell(i,7,d.get("from_ticker")); cs.cell(i,8,d.get("to_ticker"))
+        cs.cell(i,9,d.get("note")); cs.cell(i,10,d.get("source"))
     for i,d in enumerate(ov_rows, start=2):
-        cs.cell(i,11,d.get("ticker")); cs.cell(i,12,d.get("date")); cs.cell(i,13,d.get("qty"))
-        cs.cell(i,14,d.get("avg_price")); cs.cell(i,15,d.get("note")); cs.cell(i,16,d.get("source"))
-    for c,w in zip(range(1,17),[42,16,16,55,3,12,12,30,34,3,12,12,8,10,34,34]):
+        cs.cell(i,12,d.get("ticker")); cs.cell(i,13,d.get("date")); cs.cell(i,14,d.get("qty"))
+        cs.cell(i,15,d.get("avg_price")); cs.cell(i,16,d.get("note")); cs.cell(i,17,d.get("source"))
+    for c,w in zip(range(1,18),[42,14,14,18,55,3,12,12,30,34,3,12,12,8,10,34,34]):
         cs.column_dimensions[get_column_letter(c)].width = w
 
     sm = wb.create_sheet("avg_price_summary")
@@ -442,14 +445,14 @@ def main():
     ap.add_argument("--year", type=int)
     a = ap.parse_args()
     warn = []
-    classification, logic, renames, resets, ren_rows, ov_rows = load_memory(a.memory_dir, warn)
+    classification, logic, provento, renames, resets, ren_rows, ov_rows = load_memory(a.memory_dir, warn)
     peek = pd.read_excel(a.movimentacao, sheet_name=0)
     peek.columns = ["entry_type","date","entry_movement","product","holder",
                     "quantity","unit_price","amount"][:len(peek.columns)]
     year = a.year or int(pd.to_datetime(peek["date"], dayfirst=True, errors="coerce").dt.year.max())
-    mov, summary, unknown = build_movements(a.movimentacao, classification, renames, resets, year)
+    mov, summary, unknown = build_movements(a.movimentacao, classification, provento, renames, resets, year)
     blocks = load_position(a.posicao)
-    write_workbook(a.saida, mov, summary, blocks, classification, logic, ren_rows, ov_rows, year)
+    write_workbook(a.saida, mov, summary, blocks, classification, logic, provento, ren_rows, ov_rows, year)
     print(f"OK -> {a.saida}  (fiscal year {year}, {len(mov)} movement rows, "
           f"{sum(len(r) for _,_,r in blocks)} positions, "
           f"{len(renames)} renames, {len(resets)} cost resets)")
