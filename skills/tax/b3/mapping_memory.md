@@ -15,6 +15,7 @@ Two orthogonal axes per row:
 | `purchase` | + quantity, + cost |
 | `sale` | − quantity, − cost |
 | `return_of_capital` | − cost, quantity unchanged (signed by entry_type so a Credito+Debito pair cancels) |
+| `snapshot` | does not move quantity/cost; the row's `quantity` is treated as B3's authoritative position on that date — the engine anchors the ticker's qty to it IFF no purchase/sale of that ticker happens after the latest snapshot row (B3 typically emits these after a merger / conversion / restructure that the action rules can't decode) |
 | `no_action` | none |
 
 - **provento_type** — does NOT touch the position, only labels the row as **income** for the
@@ -52,7 +53,7 @@ Two orthogonal axes per row:
 | Juros Sobre Capital Próprio | no_action | no_action | interest_on_equity | JCP: não altera quantidade nem custo (contabilizado como provento) |
 | Juros Sobre Capital Próprio - Transferido | no_action | no_action | interest_on_equity | JCP (transferido): mesmo tratamento de JCP |
 | PAGAMENTO DE JUROS | no_action | no_action | yield | juros de renda fixa (debênture/CRA): não altera quantidade nem custo |
-| Atualização | no_action | no_action |  | atualização de posição: sem efeito no custo ou quantidade |
+| Atualização | snapshot | snapshot |  | atualização de posição: sem efeito no custo ou quantidade |
 | Cessão de Direitos | no_action | no_action |  | cessão de direitos de subscrição: não afeta a posição principal |
 | Cessão de Direitos - Solicitada | no_action | no_action |  | evento neutro: não altera quantidade nem custo |
 | Direito de Subscrição | no_action | no_action |  | evento neutro: não altera quantidade nem custo |

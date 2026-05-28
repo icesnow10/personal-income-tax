@@ -226,24 +226,24 @@ def build_movements(mov_path, classification, provento, renames, year):
     # accumulation is more reliable than an older snapshot. We sum snapshots on the same
     # latest date to handle tickers split across multiple lots/brokers.
     cutoff_ts = pd.Timestamp(year, 12, 31)
-    # B3 emits an "Atualização" row whenever it reasserts a ticker's position — typically
-    # after a merger / conversion / corporate event the simple action rules can't decode.
-    # When the latest Atualização is more recent than any purchase/sale for that ticker, we
-    # trust it as the authoritative position. (Proventos like Rendimento/Dividendo also
-    # carry a qty, but only by accident — they can lag corporate actions and use stale
-    # base dates, so we don't use them as snapshots.) Atualização qty is summed across
-    # holders on the latest date to handle lots split across brokers.
+    # Snapshot anchoring — driven by the `snapshot` action from mapping_memory.md (data, not
+    # code). B3 emits rows with action `snapshot` (typically Atualização) whose `quantity`
+    # reasserts the ticker's current position — usually after a merger / conversion /
+    # restructure that the simple delta rules can't decode. We anchor the ticker's qty to
+    # the latest snapshot row IFF no purchase/sale of that ticker happens after it (otherwise
+    # the snapshot is stale). Qty is summed across holders on the latest snapshot date to
+    # handle lots split across brokers. Proventos (Rendimento/Dividendo/JCP) carry qty by
+    # accident and can lag — they are NOT snapshots.
     for tk in list(qa.keys()):
         sub = raw[(raw["ticker"] == tk) & (raw["date"] <= cutoff_ts)].sort_values(["date","_ord"])
         if not len(sub): continue
-        upd = sub[sub["entry_movement"] == "Atualização"]
-        if not len(upd): continue
-        latest_upd_date = upd["date"].max()
-        # if a buy/sale happened AFTER the latest Atualização, it's outdated — don't anchor
-        after = sub[(sub["date"] > latest_upd_date) & sub["emt"].isin(["purchase","sale"])]
+        snaps_all = sub[sub["emt"] == "snapshot"]
+        if not len(snaps_all): continue
+        latest_snap_date = snaps_all["date"].max()
+        # if a buy/sale happened AFTER the latest snapshot, it's outdated — don't anchor
+        after = sub[(sub["date"] > latest_snap_date) & sub["emt"].isin(["purchase","sale"])]
         if len(after): continue
-        snap_rows = sub[(sub["date"] == latest_upd_date)
-                        & (sub["entry_movement"] == "Atualização")
+        snap_rows = sub[(sub["date"] == latest_snap_date) & (sub["emt"] == "snapshot")
                         & (sub["quantity"] > 0)]
         if len(snap_rows):
             qa[tk] = float(snap_rows.groupby("holder")["quantity"].first().sum())
