@@ -200,6 +200,22 @@ def build_movements(mov_path, classification, provento, renames, year):
         if abs(net.get(k,0.0)) > 1e-9: raw.at[idx,"tr_dq"] = net[k]
     raw["dq"] = raw["dq"] + raw["tr_dq"]
 
+    # Pre-compute the snapshot anchor per ticker: the LATEST snapshot date with no purchase/
+    # sale after it (if any buy/sell happens later, the snapshot is stale — don't anchor).
+    cutoff_ts = pd.Timestamp(year, 12, 31)
+    anchor = {}
+    for tk in raw["ticker"].dropna().unique():
+        sub = raw[(raw["ticker"] == tk) & (raw["date"] <= cutoff_ts)]
+        snaps = sub[sub["emt"] == "snapshot"]
+        if not len(snaps): continue
+        latest_snap_date = snaps["date"].max()
+        if len(sub[(sub["date"] > latest_snap_date) & sub["emt"].isin(["purchase","sale"])]):
+            continue
+        snap_rows = sub[(sub["date"] == latest_snap_date) & (sub["emt"] == "snapshot") & (sub["quantity"] > 0)]
+        if len(snap_rows):
+            anchor[tk] = (latest_snap_date,
+                          float(snap_rows.groupby("holder")["quantity"].first().sum()))
+
     chrono = raw.sort_values(["date","_ord"], ascending=[True, False])
     qa, ca, cyc, closed = {}, {}, {}, {}
     QA, CA, AV, CY = {}, {}, {}, {}
@@ -211,6 +227,12 @@ def build_movements(mov_path, classification, provento, renames, year):
             if abs(q) < 1e-9 and qa.get(tk,0.0) > 1e-9: closed[tk] = True
             if r["dq"] > 0 and qa.get(tk,0.0) <= 1e-9 and closed.get(tk): cy += 1; closed[tk] = False
             qa[tk], ca[tk], cyc[tk] = q, c, cy
+        # After the day's deltas are applied, anchor qty to B3's snapshot (Atualização) value
+        # if this date is the latest valid snapshot for the ticker. From this row onwards the
+        # ticker's qty reflects the anchored value, including the snapshot row itself in the
+        # output below and all subsequent rows.
+        for tk_a, (a_date, a_qty) in anchor.items():
+            if a_date == d: qa[tk_a] = a_qty
         for _, r in g.iterrows():
             tk = r["ticker"]; q = qa[tk]; c = ca[tk]
             if q > 1e-9:
@@ -226,48 +248,6 @@ def build_movements(mov_path, classification, provento, renames, year):
             AV[r["_ord"]] = av
             CY[r["_ord"]] = cyc[tk]
     raw["provento_type"] = raw["entry_movement"].map(lambda m: provento.get(m, ""))
-
-    # B3 reports the actual position quantity in "snapshot" rows — Atualização AND any
-    # provento row (Rendimento / Dividendo / JCP / Amortização — qty = position at the
-    # distribution date). We anchor the ticker's qty to B3's snapshot only when the LAST
-    # chronological event for the ticker is a snapshot — that means B3 reasserts the
-    # position after all purchases/sales/corporate actions, which is the case after a
-    # merger or restructure. If the last event is a buy/sale, the script's plain
-    # accumulation is more reliable than an older snapshot. We sum snapshots on the same
-    # latest date to handle tickers split across multiple lots/brokers.
-    cutoff_ts = pd.Timestamp(year, 12, 31)
-    # Snapshot anchoring — driven by the `snapshot` action from mapping_memory.md (data, not
-    # code). B3 emits rows with action `snapshot` (typically Atualização) whose `quantity`
-    # reasserts the ticker's current position — usually after a merger / conversion /
-    # restructure that the simple delta rules can't decode. We anchor the ticker's qty to
-    # the latest snapshot row IFF no purchase/sale of that ticker happens after it (otherwise
-    # the snapshot is stale). Qty is summed across holders on the latest snapshot date to
-    # handle lots split across brokers. Proventos (Rendimento/Dividendo/JCP) carry qty by
-    # accident and can lag — they are NOT snapshots.
-    for tk in list(qa.keys()):
-        sub = raw[(raw["ticker"] == tk) & (raw["date"] <= cutoff_ts)].sort_values(["date","_ord"])
-        if not len(sub): continue
-        snaps_all = sub[sub["emt"] == "snapshot"]
-        if not len(snaps_all): continue
-        latest_snap_date = snaps_all["date"].max()
-        # if a buy/sale happened AFTER the latest snapshot, it's outdated — don't anchor
-        after = sub[(sub["date"] > latest_snap_date) & sub["emt"].isin(["purchase","sale"])]
-        if len(after): continue
-        snap_rows = sub[(sub["date"] == latest_snap_date) & (sub["emt"] == "snapshot")
-                        & (sub["quantity"] > 0)]
-        if len(snap_rows):
-            qa[tk] = float(snap_rows.groupby("holder")["quantity"].first().sum())
-    # Propagate anchored state to the last row of each ticker so movements_to_avg_price and
-    # avg_price_summary reflect the anchor (avg = accumulated_cost / anchored_qty).
-    for tk in qa:
-        sub = raw[(raw["ticker"] == tk) & (raw["date"] <= cutoff_ts)].sort_values(["date","_ord"])
-        if len(sub):
-            last_ord = sub.iloc[-1]["_ord"]
-            q, c = qa[tk], ca[tk]
-            QA[last_ord] = round(q, 4)
-            AV[last_ord] = round(c/q, 6) if q > 1e-9 else None
-            CY[last_ord] = cyc.get(tk, 1)
-
     raw["quantity_accumulated"] = raw["_ord"].map(QA)
     raw["amount_adjusted"] = raw["amount_adjusted"].round(2)
     raw["avg_price"] = raw["_ord"].map(AV)
