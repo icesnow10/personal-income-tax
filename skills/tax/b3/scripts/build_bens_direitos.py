@@ -203,6 +203,7 @@ def build_movements(mov_path, classification, provento, renames, year):
     chrono = raw.sort_values(["date","_ord"], ascending=[True, False])
     qa, ca, cyc, closed = {}, {}, {}, {}
     QA, CA, AV, CY = {}, {}, {}, {}
+    last_pos_avg = {}                                   # last avg seen with qty>0 per ticker
     for d, g in chrono.groupby("date", sort=True):
         for _, r in g.iterrows():
             tk = r["ticker"]; cy = cyc.get(tk,1)
@@ -212,11 +213,17 @@ def build_movements(mov_path, classification, provento, renames, year):
             qa[tk], ca[tk], cyc[tk] = q, c, cy
         for _, r in g.iterrows():
             tk = r["ticker"]; q = qa[tk]; c = ca[tk]
+            if q > 1e-9:
+                av = round(c/q, 6); last_pos_avg[tk] = av
+            else:
+                # qty=0 or negative — no current position. Carry forward the last positive
+                # avg of this ticker (sold-out tickers keep their historical PM; brief
+                # transition states during corporate actions stay readable). Tickers that
+                # never had a positive position (renda fixa with action=no_action, folded
+                # receipts) stay blank.
+                av = last_pos_avg.get(tk)
             QA[r["_ord"]] = round(q,4); CA[r["_ord"]] = round(c,2)
-            # Only compute avg when qty is strictly positive; negative/zero qty has no
-            # meaningful preço médio (it's a sign the accumulation went through an inconsistent
-            # state — typically a corporate action the rules can't decode).
-            AV[r["_ord"]] = round(c/q,6) if q > 1e-9 else None
+            AV[r["_ord"]] = av
             CY[r["_ord"]] = cyc[tk]
     raw["provento_type"] = raw["entry_movement"].map(lambda m: provento.get(m, ""))
 
