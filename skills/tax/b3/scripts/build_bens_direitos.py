@@ -431,7 +431,7 @@ def write_workbook(out_path, mov, summary, blocks, classification, logic, proven
     for c,w in zip(range(1,7),[14,12,14,22,10,46]): rc.column_dimensions[get_column_letter(c)].width=w
     rc.freeze_panes = "A2"
 
-    ir = wb.create_sheet("IRPF")
+    ir = wb.create_sheet("IRPF_bens_e_direitos")
     ir.append(["ticker","grupo","codigo","localizacao","cnpj","discriminacao","valor"]); hdr(ir,7,LPURPLE)
     for tipo,headers,rows in blocks:
         grupo, codigo = IRPF_CODE.get(tipo, ("",""))
@@ -449,6 +449,38 @@ def write_workbook(out_path, mov, summary, blocks, classification, logic, proven
             ir.append([tk, grupo, codigo, 105, cnpj, discriminacao(d, summary), valor])
     for c,w in zip(range(1,8),[12,7,7,12,18,120,14]): ir.column_dimensions[get_column_letter(c)].width = w
     ir.freeze_panes = "A2"
+
+    # ---- IRPF rendimentos isentos (tipo 9: dividendos + rendimentos FII) and exclusivos
+    # (tipo 10: JCP). Per-ticker totals, only main tickers (equity/FII/BDR), CNPJ and
+    # ticker-nome resolved from the position blocks. Tickers with zero income are skipped.
+    pos_lookup = {}                                        # ticker → (cnpj, full produto name)
+    for tipo,_,rows in blocks:
+        if tipo == "RENDA FIXA": continue
+        for d in rows:
+            tk = getcol(d,"Código de Negociação","Codigo de Negociacao")
+            if tk and tk not in pos_lookup:
+                pos_lookup[tk] = (getcol(d,"CNPJ da Empresa","CNPJ do Fundo") or "",
+                                  str(getcol(d,"Produto") or "").strip())
+
+    def append_income_rows(sheet, tipo_rendimento, mask_types):
+        for tk, sub in mov.groupby("ticker"):
+            if not is_code(tk): continue
+            total = float(sub[sub["provento_type"].isin(mask_types)]["amount_adjusted"].sum())
+            if abs(total) < 0.005: continue
+            cnpj, produto = pos_lookup.get(tk, ("", ""))
+            sheet.append([tipo_rendimento, tk, cnpj, produto, round(total, 2)])
+
+    isn = wb.create_sheet("IRPF_rendimentos_isentos")
+    isn.append(["tipo_de_rendimento","ticker","cnpj","ticker_nome","valor"]); hdr(isn,5,LPURPLE)
+    append_income_rows(isn, 9, {"dividend","yield","return_of_capital"})
+    for c,w in zip(range(1,6),[20,12,18,60,14]): isn.column_dimensions[get_column_letter(c)].width = w
+    isn.freeze_panes = "A2"
+
+    exc = wb.create_sheet("IRPF_rendimentos_exclusivos")
+    exc.append(["tipo_de_rendimento","ticker","cnpj","ticker_nome","valor"]); hdr(exc,5,LPURPLE)
+    append_income_rows(exc, 10, {"interest_on_equity"})
+    for c,w in zip(range(1,6),[20,12,18,60,14]): exc.column_dimensions[get_column_letter(c)].width = w
+    exc.freeze_panes = "A2"
 
     wb.save(out_path)
 
