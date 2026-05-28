@@ -421,7 +421,10 @@ def write_workbook(out_path, mov, summary, blocks, classification, logic, ren_ro
             tk = getcol(d,"Código de Negociação","Codigo de Negociacao") or str(getcol(d,"Produto") or "").strip()
             cnpj = getcol(d,"CNPJ da Empresa","CNPJ do Fundo") or ""; qty = getcol(d,"Quantidade")
             if tipo == "RENDA FIXA":
-                valor = getcol(d,"Valor Aplicado")
+                # Tesouro: "Valor Aplicado". Renda Fixa privada (CDB/CRA/LCA/LCI/DEB): the B3
+                # export carries "Valor Atualizado CURVA" (curva-based marked value).
+                valor = getcol(d, "Valor Aplicado", "Valor Atualizado CURVA",
+                               "Valor Atualizado MTM", "Valor Atualizado")
             else:
                 avg = (summary.get(getcol(d,"Código de Negociação","Codigo de Negociacao")) or {}).get("avg")
                 valor = round(avg*qty,2) if (avg is not None and isinstance(qty,(int,float))) else None
