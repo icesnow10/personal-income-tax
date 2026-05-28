@@ -1,0 +1,12 @@
+# Never commit a real taxpayer's data — inputs or generated outputs.
+# (overrides_example.csv and template_rsu.xlsx ARE generic and stay tracked.)
+overrides.csv
+**/overrides.csv
+out.xlsx
+*_out.xlsx
+b3_bens_e_direitos*.xlsx
+# B3 source exports
+movs_*.xlsx
+movimenta*.xlsx
+position_*.xlsx
+posicao_*.xlsx
