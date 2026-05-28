@@ -351,12 +351,25 @@ def write_workbook(out_path, mov, summary, blocks, classification, logic, proven
         cs.column_dimensions[get_column_letter(c)].width = w
 
     sm = wb.create_sheet("avg_price_summary")
-    sm.append(["ticker","latest_accumulated_quantity","latest_avg_price","income_received"]); hdr(sm,4,LPURPLE)
+    sm.append(["ticker","latest_accumulated_quantity","latest_avg_price"]); hdr(sm,3,LPURPLE)
     is_code = lambda t: isinstance(t,str) and " " not in t and len(t) <= 6
-    for tk in sorted(k for k in summary if summary[k]["avg"] is not None and is_code(k)):
+    main_tickers = sorted(k for k in summary if summary[k]["avg"] is not None and is_code(k))
+    for tk in main_tickers:
         s = summary[tk]
-        sm.append([tk, s["qty"], round(s["avg"],6), s["income"]])
-    for c,w in zip(range(1,5),[14,26,18,16]): sm.column_dimensions[get_column_letter(c)].width = w
+        sm.append([tk, s["qty"], round(s["avg"],6)])
+    for c,w in zip(range(1,4),[14,26,18]): sm.column_dimensions[get_column_letter(c)].width = w
+
+    # income — per-ticker provento breakdown
+    inc = wb.create_sheet("income")
+    inc.append(["ticker","interest","yield","income_received_total"]); hdr(inc,4,LPURPLE)
+    for tk in main_tickers:
+        sub = mov[mov["ticker"] == tk]
+        interest_total = sub[sub["provento_type"] == "interest_on_equity"]["amount_adjusted"].sum()
+        yield_total = sub[sub["provento_type"].isin(["dividend","yield","return_of_capital"])]["amount_adjusted"].sum()
+        total = sub[sub["provento_type"].astype(bool)]["amount_adjusted"].sum()
+        if interest_total or yield_total or total:
+            inc.append([tk, round(float(interest_total),2), round(float(yield_total),2), round(float(total),2)])
+    for c,w in zip(range(1,5),[14,14,14,22]): inc.column_dimensions[get_column_letter(c)].width = w
 
     union = []
     for _,headers,_ in blocks:
