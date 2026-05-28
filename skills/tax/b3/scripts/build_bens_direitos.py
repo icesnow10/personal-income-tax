@@ -213,7 +213,10 @@ def build_movements(mov_path, classification, provento, renames, year):
         for _, r in g.iterrows():
             tk = r["ticker"]; q = qa[tk]; c = ca[tk]
             QA[r["_ord"]] = round(q,4); CA[r["_ord"]] = round(c,2)
-            AV[r["_ord"]] = round(c/q,6) if abs(q) > 1e-9 else None
+            # Only compute avg when qty is strictly positive; negative/zero qty has no
+            # meaningful preço médio (it's a sign the accumulation went through an inconsistent
+            # state — typically a corporate action the rules can't decode).
+            AV[r["_ord"]] = round(c/q,6) if q > 1e-9 else None
             CY[r["_ord"]] = cyc[tk]
     raw["provento_type"] = raw["entry_movement"].map(lambda m: provento.get(m, ""))
 
@@ -255,7 +258,7 @@ def build_movements(mov_path, classification, provento, renames, year):
             last_ord = sub.iloc[-1]["_ord"]
             q, c = qa[tk], ca[tk]
             QA[last_ord] = round(q, 4)
-            AV[last_ord] = round(c/q, 6) if abs(q) > 1e-9 else None
+            AV[last_ord] = round(c/q, 6) if q > 1e-9 else None
             CY[last_ord] = cyc.get(tk, 1)
 
     raw["quantity_accumulated"] = raw["_ord"].map(QA)
@@ -491,6 +494,22 @@ def main():
             print(f"    {tk:8} ({tp:5}) position={pq}  movements={mq}  diff={d:+}")
     else:
         print("  All main-ticker quantities match the year-end position.")
+    # Second axis: avg_price in summary must equal the latest avg_price per ticker in the
+    # movements sheet (they're computed from the same state, but a divergence would mean a
+    # bug in propagation).
+    avg_mismatches = []
+    for tk, sub in mov.groupby("ticker"):
+        s = sub[sub["date"] <= pd.Timestamp(year, 12, 31)].sort_values(["date","_ord"])
+        if not len(s): continue
+        mov_avg = s.iloc[-1]["avg_price"]
+        sum_avg = (summary.get(tk) or {}).get("avg")
+        ma = None if mov_avg is None or pd.isna(mov_avg) else round(float(mov_avg), 6)
+        sa = None if sum_avg is None else round(float(sum_avg), 6)
+        if ma != sa:
+            avg_mismatches.append((tk, ma, sa))
+    print(f"AUDIT (latest avg_price movements vs avg_price_summary): {len(summary)-len(avg_mismatches)}/{len(summary)} OK")
+    for tk, ma, sa in avg_mismatches:
+        print(f"    {tk:8} movements={ma}  summary={sa}")
 
 
 if __name__ == "__main__":
