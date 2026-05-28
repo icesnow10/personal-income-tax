@@ -226,27 +226,27 @@ def build_movements(mov_path, classification, provento, renames, year):
     # accumulation is more reliable than an older snapshot. We sum snapshots on the same
     # latest date to handle tickers split across multiple lots/brokers.
     cutoff_ts = pd.Timestamp(year, 12, 31)
-    # When the script's accumulation produces a clearly invalid qty (negative — a tell-tale
-    # sign of a corporate-action sequence the rules can't decode, e.g. a Resgate that follows
-    # a merger), trust B3's latest snapshot. The snapshot comes from a provento row
-    # (Rendimento / Dividendo / JCP / Amortização) where qty = position at the distribution
-    # date, summed across holders to handle lots split across brokers. Restituição is
-    # excluded because some companies (e.g. Telefônica) use a pre-restructure base date.
-    # For non-negative cases we trust the script; mismatches surface in the AUDIT for the
-    # user to investigate (grupamentos with ratios, exotic restructures).
-    SNAP_MOVS = {"Rendimento","Rendimento - Transferido",
-                 "Dividendo","Dividendo - Transferido",
-                 "Juros Sobre Capital Próprio","Juros Sobre Capital Próprio - Transferido",
-                 "Atualização","Amortização","AMORTIZAÇÃO","PAGAMENTO DE JUROS"}
-    is_snap = raw["entry_movement"].isin(SNAP_MOVS) & (raw["quantity"] > 0)
+    # B3 emits an "Atualização" row whenever it reasserts a ticker's position — typically
+    # after a merger / conversion / corporate event the simple action rules can't decode.
+    # When the latest Atualização is more recent than any purchase/sale for that ticker, we
+    # trust it as the authoritative position. (Proventos like Rendimento/Dividendo also
+    # carry a qty, but only by accident — they can lag corporate actions and use stale
+    # base dates, so we don't use them as snapshots.) Atualização qty is summed across
+    # holders on the latest date to handle lots split across brokers.
     for tk in list(qa.keys()):
-        if qa[tk] >= 0: continue                           # script's qty is plausible — keep it
         sub = raw[(raw["ticker"] == tk) & (raw["date"] <= cutoff_ts)].sort_values(["date","_ord"])
         if not len(sub): continue
-        latest_snap_date = sub[is_snap.loc[sub.index]]["date"].max()
-        if pd.isna(latest_snap_date): continue
-        snap_rows = sub[(sub["date"] == latest_snap_date) & is_snap.loc[sub.index]]
-        qa[tk] = float(snap_rows.groupby("holder")["quantity"].first().sum())
+        upd = sub[sub["entry_movement"] == "Atualização"]
+        if not len(upd): continue
+        latest_upd_date = upd["date"].max()
+        # if a buy/sale happened AFTER the latest Atualização, it's outdated — don't anchor
+        after = sub[(sub["date"] > latest_upd_date) & sub["emt"].isin(["purchase","sale"])]
+        if len(after): continue
+        snap_rows = sub[(sub["date"] == latest_upd_date)
+                        & (sub["entry_movement"] == "Atualização")
+                        & (sub["quantity"] > 0)]
+        if len(snap_rows):
+            qa[tk] = float(snap_rows.groupby("holder")["quantity"].first().sum())
     # Propagate anchored state to the last row of each ticker so movements_to_avg_price and
     # avg_price_summary reflect the anchor (avg = accumulated_cost / anchored_qty).
     for tk in qa:
