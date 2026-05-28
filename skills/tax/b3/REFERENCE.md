@@ -34,25 +34,31 @@ Built from the **Movimentação** history, chronologically, per **current ticker
 4. **Custody transfers** (`Transferência`/`Transferencia`, no price): matched in/out pairs on a
    date net to zero; a **lone** leg is a real quantity change (e.g. a single bonus cota).
 
-5. **Corporate-action cost_reset** (`overrides.csv`, `kind=cost_reset`): on the given date, the
-   ticker's accumulated state is **set** to `(qty, qty×avg_price)`. Use for a merger/incorporação
-   where the *fato relevante* defines a new acquisition cost (e.g. patrimonial value) instead of
+5. **Corporate-action cost_reset** (`overrides_memory.md`): on the given date, the ticker's
+   accumulated state is **set** to `(qty, qty×avg_price)`. Use for a merger/incorporação where
+   the *fato relevante* defines a new acquisition cost (e.g. patrimonial value) instead of
    preserving the historical cost. **Verify the value against the fato relevante.**
 
-## 2. overrides.csv schema
+## 2. Living-memory files (markdown tables)
 
-One file per taxpayer (not committed). Columns:
+The three memories are the single source of truth; the script reads them (via `--memory-dir`,
+default = current folder) and writes them into the `aux_mapping` sheet. Each is a markdown file
+with **one data table** (extra explanatory tables are ignored — the data table is picked by its
+key column). Edit the tables to teach the tool; never edit the code.
 
-`kind,from_ticker,to_ticker,ticker,date,qty,avg_price,note,source`
+| File | Key column | Columns | Fallback |
+|---|---|---|---|
+| `mapping_memory.md` | `entry_movement` | `entry_movement, credito, debito, logic` | bundled copy |
+| `ticker_memory.md` | `from_ticker` | `from_ticker, to_ticker, note, source` | none → empty + warn |
+| `overrides_memory.md` | `ticker` | `ticker, date (YYYY-MM-DD), qty, avg_price, note, source` | none → empty + warn |
 
-- `kind=rename` — uses `from_ticker`,`to_ticker`. Maps an old/related code to the current ticker.
-- `kind=cost_reset` — uses `ticker`,`date` (YYYY-MM-DD),`qty`,`avg_price`. Sets the position's
-  cost basis from that date.
-- `note` + `source` are documentation (the source link to the fato relevante / B3) and are
-  echoed into the `aux_mapping` sheet for traceability.
+`note`/`source` are documentation (link to the fato relevante / B3), echoed into `aux_mapping`
+for traceability. Handled **without** any entry: FII subscription receipts (12/13→11),
+splits/grupamentos, amortizações (return of capital), and lone bonus cotas.
 
-See `overrides_example.csv`. Things the engine handles **without** an override: FII subscription
-receipts (12/13→11), splits/grupamentos, amortizações (return of capital), and lone bonus cotas.
+The bundled `mapping_memory.md` is generic and shared; `ticker_memory.md` / `overrides_memory.md`
+ship as **templates** with illustrative rows — copy to your working folder and replace with your
+own (don't commit a taxpayer's real ones).
 
 ## 3. Position blocks & IRPF mapping
 
@@ -84,10 +90,10 @@ discriminação; treasury has none. Edge cases to confirm with an accountant: **
 
 - Year-end quantities in `avg_price_summary` must equal the `Posição` quantities (the two
   sources are independent — a mismatch means a movement was mis-classified or a corporate action
-  is missing from `overrides.csv`).
+  is missing from `overrides_memory.md`).
 - No `avg_price` should resemble a market quote — it must be the cost basis.
-- The script prints `WARNING: unmapped entry_movement` for any movement type not in the table;
-  add it to `CLASSIFICATION` in `scripts/build_bens_direitos.py` with the right action.
+- The script prints `WARNING: unmapped entry_movement` for any movement type missing from
+  `mapping_memory.md`; add a row there with the right action (do not edit the code).
 - Ending qty = opening + purchases − sales (± splits/conversions) ≥ 0.
 
 ## 5. Files
@@ -96,6 +102,8 @@ discriminação; treasury has none. Edge cases to confirm with an accountant: **
 b3/
 ├── SKILL.md
 ├── REFERENCE.md
-├── overrides_example.csv            # template — copy to overrides.csv and fill (not committed)
-└── scripts/build_bens_direitos.py   # MOV.xlsx POS.xlsx OUT.xlsx [--overrides f.csv] [--year Y]
+├── mapping_memory.md                 # generic B3 movement→action table (shared, bundled)
+├── ticker_memory.md                  # template — renames (copy to your working folder, fill)
+├── overrides_memory.md               # template — cost resets (copy to your working folder, fill)
+└── scripts/build_bens_direitos.py    # MOV.xlsx POS.xlsx OUT.xlsx [--memory-dir DIR] [--year Y]
 ```

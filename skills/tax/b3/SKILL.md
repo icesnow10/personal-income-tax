@@ -26,25 +26,40 @@ Both are downloaded from the B3 investor area (Extratos → Movimentação / Pos
 1. **Preço médio = custo de aquisição ÷ quantidade** (cost basis) — NOT market price. Bens e
    Direitos is declared at acquisition cost.
 2. **Current ticker** = `TRIM(LEFT(Produto,6))`, folding FII subscription receipts
-   (`XXXX12`/`XXXX13` → `XXXX11`) and applying explicit **renames** (old code → current).
-3. Movement → effect comes from a table (see [REFERENCE.md](REFERENCE.md)): compra/venda move
-   qty+cost; **rendimento/dividendo/JCP don't touch cost**; **amortização = devolução de capital
-   reduces cost**; subscrições não exercidas, transferências de custódia, atualização = neutral.
-4. **Corporate actions need the overrides file** (`overrides.csv`): desdobro/grupamento change
-   quantity only; a **merger/incorporação can RESET the cost basis** to a value set in the
+   (`XXXX12`/`XXXX13` → `XXXX11`) and applying explicit **renames** from `ticker_memory.md`.
+3. Movement → effect comes from `mapping_memory.md`: compra/venda move qty+cost;
+   **rendimento/dividendo/JCP don't touch cost**; **amortização = devolução de capital reduces
+   cost**; subscrições não exercidas, transferências de custódia, atualização = neutral.
+4. **Corporate actions live in `overrides_memory.md`**: desdobro/grupamento change quantity only
+   (automatic); a **merger/incorporação can RESET the cost basis** to a value set in the
    *fato relevante* (the historical cost is NOT preserved) — record it as a `cost_reset`.
 5. IRPF Bens e Direitos codes: **Ação → grupo 3 / código 1**, **BDR → 4 / 4**,
    **FII → 7 / 3**, **Tesouro/renda fixa → 4 / 2**; localização **105** (Brasil).
 
+## Living memory (the source of truth)
+
+Three markdown files drive the run and are pasted into the workbook's `aux_mapping` sheet. Edit
+them as new things appear — **no code changes**:
+
+| File | Holds | Scope |
+|---|---|---|
+| `mapping_memory.md` | each B3 `entry_movement` → action (purchase/sale/yield/…) | generic (B3) — bundled |
+| `ticker_memory.md` | renames: old/related code → current ticker (mergers, BDR/PN→ON) | taxpayer-specific |
+| `overrides_memory.md` | `cost_reset`: ticker+date → new (qty, avg_price) from a *fato relevante* | taxpayer-specific |
+
+Keep your filled `ticker_memory.md` / `overrides_memory.md` in your **working folder** and point
+`--memory-dir` at it (the bundled copies are generic templates). `mapping_memory.md` falls back
+to the bundled one if not present.
+
 ## Workflow
 
 1. **Get both exports** from B3 (Movimentação = all years; Posição = 31/12 of the fiscal year).
-2. **Fill `overrides.csv`** for this taxpayer's corporate actions (renames + cost_resets), each
-   with a **source link** to the fato relevante. Start from `overrides_example.csv`. Leave empty
-   if none.
-3. **Run**:
-   `python scripts/build_bens_direitos.py MOV.xlsx POS.xlsx OUT.xlsx --overrides overrides.csv --year 2025`
-   (the script warns about any movement type it doesn't recognize — add it to the table).
+2. **Update the memory files** for this taxpayer's renames (`ticker_memory.md`) and corporate
+   actions (`overrides_memory.md`), each with a **source link** to the fato relevante. Copy the
+   bundled templates into your working folder and edit there. Leave them empty if none apply.
+3. **Run** from the folder holding your memory files (or pass `--memory-dir`):
+   `python scripts/build_bens_direitos.py MOV.xlsx POS.xlsx OUT.xlsx --memory-dir . --year 2025`
+   (the script warns about any movement type missing from `mapping_memory.md` — add a row there).
 4. **Verify** (see REFERENCE.md §validation): year-end quantities in `avg_price_summary` match
    the `Posição` quantities; spot-check that no `avg_price` looks like a market quote.
 
@@ -66,5 +81,6 @@ Both are downloaded from the B3 investor area (Extratos → Movimentação / Pos
 - Bens e Direitos asks **two situations** (31/12 prior year and 31/12 current). This builds the
   **current** value; the prior-year value comes from last year's declaration (and differs for
   any ticker touched by a 2025 event).
-- Keep this skill **generic** — never commit a real taxpayer's tickers, CNPJs, values or
-  `overrides.csv`. See [REFERENCE.md](REFERENCE.md) for the tables and algorithm.
+- Keep this skill **generic** — never commit a real taxpayer's tickers, CNPJs, values or a
+  filled `ticker_memory.md` / `overrides_memory.md` (keep those in your working folder). See
+  [REFERENCE.md](REFERENCE.md) for the tables, the memory-file format and the algorithm.

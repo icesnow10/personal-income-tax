@@ -1,5 +1,0 @@
-kind,from_ticker,to_ticker,ticker,date,qty,avg_price,note,source
-rename,OLDX12,OLDX11,,,,,exemplo: recibo de subscricao -> cota principal (geralmente automatico; so liste se o codigo nao seguir o padrao),
-rename,OLDA11,NEWA11,,,,,exemplo: FII incorporado/renomeado em outro codigo - troque pelos seus,https://link-do-fato-relevante
-rename,ZZZZ33,ZZZZ34,,,,,exemplo: BDR renomeado,B3
-cost_reset,,,NEWA11,2025-12-12,20,83.39,exemplo: incorporacao define custo de aquisicao a valor patrimonial - CONFIRA no fato relevante,https://link-do-fato-relevante
