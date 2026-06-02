@@ -69,15 +69,15 @@ a taxpayer's data** (see `.gitignore`).
 The investments pipeline (`irpf` and everything under it) is bundled as the
 **`open-personal-income-tax`** plugin. `rsu` is standalone.
 
-| Skill | What it does |
-|---|---|
-| **[irpf](skills/tax/irpf/SKILL.md)** · orchestrator | Runs the full investments pipeline `b3` → `consolidate` → `completeness` from the B3 exports + broker/bank informes. |
-| ├─ [b3](skills/tax/b3/SKILL.md) | IRPF "Bens e Direitos" for B3 assets (ações, FIIs, BDRs, Tesouro/renda fixa): reconstructs the average acquisition cost (preço médio) from the **Movimentação** history and the year-end **Posição**. Driven by editable **living-memory files** (movement→action mapping, ticker renames, corporate-action cost resets — each with sources). |
-| ├─ [consolidate](skills/tax/consolidate/SKILL.md) · orchestrator | Orchestrates `read` + `generate`: transcribe every informe, then build the three IRPF fichas. |
-| │&nbsp;&nbsp;&nbsp;├─ [read](skills/tax/read/SKILL.md) | Reads every broker/bank informe in `resources/` (PDFs/prints, many image/encrypted) into the unified `processed/informes.json` — one object per asset/rendimento, tagged by ficha (bens / isentos / exclusiva), with key, grupo/código, CNPJ, value and the source PDF. |
-| │&nbsp;&nbsp;&nbsp;└─ [generate](skills/tax/generate/SKILL.md) | Deterministically merges the b3 workbook + `informes.json` into `irpf_consolidated.xlsx`. B3-asset value comes from the b3 custo; grupo/código/CNPJ and all rendimentos come from the informes. |
-| └─ [completeness](skills/tax/completeness/SKILL.md) | Audits the consolidated against the informes **by ficha** and **edits `irpf_consolidated.xlsx` in place** to the per-ficha authority, stamping an `obs_completeness` column. Also pulls each ação/FII **escriturador from the B3 API** to check the authoritative dividend/JCP informe was used. |
-| **[rsu](skills/tax/rsu/SKILL.md)** · standalone · 🧪 beta | IRPF declaration for RSUs of a foreign (US-listed) company at any equity broker: vesting cost basis, capital gains on sales and the year-end position, converting USD→BRL with the Central Bank's official PTAX (sell on acquisition, buy on sale). Bundles a ready-to-fill spreadsheet template + helper scripts. **Beta** — validate carefully before relying on it. |
+| Skill | Role / part of | What it does |
+|---|---|---|
+| [irpf](skills/tax/irpf/SKILL.md) | orchestrator | Runs the full investments pipeline `b3` → `consolidate` → `completeness` from the B3 exports + broker/bank informes. |
+| [b3](skills/tax/b3/SKILL.md) | part of `irpf` | IRPF "Bens e Direitos" for B3 assets (ações, FIIs, BDRs, Tesouro/renda fixa): reconstructs the average acquisition cost (preço médio) from the **Movimentação** history and the year-end **Posição**. Driven by editable **living-memory files** (movement→action mapping, ticker renames, corporate-action cost resets — each with sources). |
+| [consolidate](skills/tax/consolidate/SKILL.md) | orchestrator · part of `irpf` | Orchestrates `read` + `generate`: transcribe every informe, then build the three IRPF fichas. |
+| [read](skills/tax/read/SKILL.md) | part of `consolidate` | Reads every broker/bank informe in `resources/` (PDFs/prints, many image/encrypted) into the unified `processed/informes.json` — one object per asset/rendimento, tagged by ficha (bens / isentos / exclusiva), with key, grupo/código, CNPJ, value and the source PDF. |
+| [generate](skills/tax/generate/SKILL.md) | part of `consolidate` | Deterministically merges the b3 workbook + `informes.json` into `irpf_consolidated.xlsx`. B3-asset value comes from the b3 custo; grupo/código/CNPJ and all rendimentos come from the informes. |
+| [completeness](skills/tax/completeness/SKILL.md) | part of `irpf` | Audits the consolidated against the informes **by ficha** and **edits `irpf_consolidated.xlsx` in place** to the per-ficha authority, stamping an `obs_completeness` column. Also pulls each ação/FII **escriturador from the B3 API** to check the authoritative dividend/JCP informe was used. |
+| [rsu](skills/tax/rsu/SKILL.md) | standalone · 🧪 beta | IRPF declaration for RSUs of a foreign (US-listed) company at any equity broker: vesting cost basis, capital gains on sales and the year-end position, converting USD→BRL with the Central Bank's official PTAX (sell on acquisition, buy on sale). Bundles a ready-to-fill spreadsheet template + helper scripts. **Beta** — validate carefully before relying on it. |
 
 ---
 
