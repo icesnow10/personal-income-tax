@@ -17,6 +17,19 @@ Or drop all skills into a project with [`skills`](https://github.com/mattpocock/
 npx skills@latest add icesnow10/personal-income-tax
 ```
 
+## Getting the inputs (onboarding)
+
+Before running anything, drop two kinds of files into the taxpayer's `resources/` folder:
+
+**1. B3 exports** — from the *área do investidor* ([investidor.b3.com.br](https://www.investidor.b3.com.br/), menu **Extratos**):
+- **Movimentação** — the **full history since your first trade** (every year), exported to Excel. This is what `b3` replays to rebuild the average cost (preço médio).
+- **Posição** at **31/12 of the base year** (the year you're declaring), exported to Excel — the year-end holdings.
+- **Posição** at **31/12 of the previous year** — recommended, for the opening balance and corporate-action checks.
+
+**2. Informes de Rendimentos** — download the IRPF informe of the base year from **every institution** where you hold (or held) assets or cash: brokers, banks and fintechs (BTG, Nubank, Itaú, Bradesco, Banco do Brasil, Wise, Nomad, XP, …). Drop each PDF (or print) into `resources/`.
+
+You don't have to be exhaustive on the first pass: **`completeness` audits the B3 assets against the informes you provided and flags any asset still missing a supporting informe** — and it pulls each ação/FII escriturador from the B3 API to check the authoritative dividend/JCP statement was used. The report tells you exactly which documents still need to be fetched, so you loop: add the missing informe → re-run.
+
 ## Pipeline (investments)
 
 `irpf` orchestrates the whole investments declaration end to end; `consolidate` is itself an
