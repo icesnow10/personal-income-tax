@@ -1,0 +1,5 @@
+{
+  "name": "open-personal-income-tax",
+  "version": "1.0.0",
+  "description": "Prepare the Brazilian IRPF investments declaration end to end: reconstruct preço médio/custo from B3 exports, transcribe broker/bank informes, build the Bens e Direitos / Rendimentos Isentos / Tributação Exclusiva fichas, and audit the result against the informes."
+}

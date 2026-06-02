@@ -10,3 +10,11 @@ movs_*.xlsx
 movimenta*.xlsx
 position_*.xlsx
 posicao_*.xlsx
+# generated deliverables / transcriptions (per-taxpayer, never generic)
+brazil_investments*.xlsx
+irpf_consolidated*.xlsx
+informes.json
+completeness_report.md
+# python
+__pycache__/
+*.pyc

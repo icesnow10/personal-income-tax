@@ -1,0 +1,17 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "personal-income-tax",
+  "description": "Claude Code skills marketplace for the Brazilian personal income tax return (IRPF)",
+  "owner": {
+    "name": "icesnow10"
+  },
+  "plugins": [
+    {
+      "name": "open-personal-income-tax",
+      "description": "End-to-end IRPF investments pipeline (b3 -> consolidate -> completeness): preço médio/custo from B3 exports, informes transcription, the three IRPF fichas, and a completeness audit that edits the consolidated to the per-ficha authority.",
+      "source": "./plugins/open-personal-income-tax",
+      "category": "finance",
+      "version": "1.0.0"
+    }
+  ]
+}
