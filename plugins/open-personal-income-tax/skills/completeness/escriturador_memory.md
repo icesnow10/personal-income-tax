@@ -6,6 +6,20 @@ R$ 454,46 na corretora × **R$ 842,87** no escriturador BB). O `/completeness` u
 por ação/FII em Bens e Direitos, conferir se **alguma fonte do rendimento é o informe do escriturador**
 (o `tag` aparece no `source` do rendimento no `informes.json`).
 
+> **Gere este arquivo automaticamente da B3** (recomendado — sem prints, sem depender dos informes):
+> `python scripts/fetch_escriturador.py --investimentos processed/brazil_investments.xlsx`
+> Ele lê cada ação/FII/BDR do workbook do b3 e consulta a API pública da B3 (campo `ifd` p/ FII/FI-Infra,
+> `hasCommom` p/ ação/BDR). O resto deste arquivo é o **formato + fallback manual**.
+
+**Prioridade da fonte do escriturador** (use a mais alta disponível e registre em `source`):
+1. **O próprio informe do escriturador** — Bradesco "Ativos Escriturais", BB Seguros, Porto/Itaú etc.
+   (é o documento que o escriturador emite; mais autoritativo que qualquer terceiro).
+2. **B3** — a página oficial do ativo (abaixo), seção **Escriturador**. As páginas são SPA (não saem
+   em texto puro); abra no navegador. É a fonte de cadastro oficial.
+3. **Regulamento / CVM-FNET** do fundo (para FII/FI-Infra).
+4. **Busca web** (statusinvest, clubefii, material do fundo) — **só como último recurso** e sempre
+   marque `source` com **"⚠️ via web — CONFIRMAR na B3"**; snippets erram/desatualizam (ex.: CNPJ divergente).
+
 Preencha a partir da B3 (abra o ativo → seção **Escriturador**):
 - **Ações:**         https://www.b3.com.br/pt_br/produtos-e-servicos/negociacao/renda-variavel/empresas-listadas.htm
 - **FIIs:**          https://www.b3.com.br/pt_br/produtos-e-servicos/negociacao/renda-variavel/fundos-de-investimentos/fii/fiis-listados/

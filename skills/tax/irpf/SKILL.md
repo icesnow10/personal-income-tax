@@ -77,6 +77,8 @@ O [consolidate](../consolidate/SKILL.md) orquestra as duas sub-etapas:
 python ../completeness/scripts/completeness.py compare \
     --investimentos processed/brazil_investments.xlsx --informes processed/informes.json
 ```
+Antes, popule o escriturador das ações/FII direto da B3 (sem prints/informes):
+`python ../completeness/scripts/fetch_escriturador.py --investimentos processed/brazil_investments.xlsx`.
 Confere `b3_source × informes.json` por ficha **e audita/edita o `irpf_consolidated.xlsx`** (achado ao
 lado do relatório): valor fora da autoridade da ficha (Bens e Direitos → b3_source; rendimentos →
 informe) é **corrigido no consolidado** e anotado na coluna `obs_completeness`; o `.md` ganha a seção

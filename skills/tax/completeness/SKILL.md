@@ -40,20 +40,26 @@ Run from the **taxpayer folder** (layout `resources/` raw → `processed/` deriv
   ```
   For ações/FII the informe gives only **quantidade** (no BRL value) → put `quantidade`, omit `valor_2025`.
   `source` is the **PDF** the value came from (joined with `+`/`/` across PDFs) → the **fonte (PDF)** column.
-- **`memory/escriturador_memory.md`** (optional) — living memory `ticker → escriturador` (nome, CNPJ,
-  `tag`, source da B3), template em [escriturador_memory.md](escriturador_memory.md). Liga o papel ao
-  escriturador para a auditoria "o informe do escriturador foi usado?". Override com `--escriturador-memory`.
+- **`memory/escriturador_memory.md`** — living memory `ticker → escriturador` (nome, CNPJ, `tag`, source),
+  que liga o papel ao escriturador para a auditoria "o informe do escriturador foi usado?". **Gere
+  automaticamente da B3** (sem prints, sem depender dos informes) com
+  `python scripts/fetch_escriturador.py --investimentos processed/brazil_investments.xlsx` — ele lê os
+  tickers/CNPJs do workbook do b3 (sempre presente) e busca o escriturador na API pública da B3 (campo
+  `ifd` p/ FII/FI-Infra, `hasCommom` p/ ação/BDR — o mesmo de B3 > "Informações Gerais do Fundo >
+  Escriturador"), preservando o `tag` já preenchido. Template/fallback manual em
+  [escriturador_memory.md](escriturador_memory.md). Override do caminho com `--escriturador-memory`.
 
 ## Workflow
 1. **Build the transcription** with [/read](../read/SKILL.md) (or run it standalone). Parsing aid:
    `python scripts/completeness.py extract resources/` (image/encrypted PDFs yield nothing — read by hand).
-2. **Reconcile + fix**: `python scripts/completeness.py compare --investimentos processed/brazil_investments.xlsx --informes processed/informes.json`
+2. **Escriturador da B3** (sem prints/informes): `python scripts/fetch_escriturador.py --investimentos processed/brazil_investments.xlsx` → popula `memory/escriturador_memory.md` consultando a API da B3 para cada ação/FII/BDR do workbook.
+3. **Reconcile + fix**: `python scripts/completeness.py compare --investimentos processed/brazil_investments.xlsx --informes processed/informes.json`
    Writes `completeness_report.md` AND **audits/edits the deliverable `irpf_consolidated.xlsx` in place**
    (it's picked up automatically beside the report; override with `--consolidado`). Any value that drifts
    from its ficha authority (Bens → b3_source custo; rendimentos → informe) is **rewritten in the
    consolidated** and stamped in an `obs_completeness` column; rows that merely diverged from the other
    source (but were already correct) get a "conferido" note. Use `--no-apply` to audit without editing.
-3. **Read the `.md`** — sections per IRPF ficha:
+4. **Read the `.md`** — sections per IRPF ficha:
    - **Bens e Direitos**: `grupo | código | asset | qtd b3 | qtd informe | valor b3 | valor informe | fonte (PDF) | status`. Código mismatch is flagged inline (`⚠️b3=3/inf=10`); a TOTAL-a-declarar line counts the não-B3 items to add by hand.
    - **Rendimentos Isentos** (09/99) and **Tributação Exclusiva** (06/10): per código, with a **SOMA por código** (a per-item gap that reconciles at the total is visible).
    - **Escriturador das ações/FII**: por ação/FII/FI-Infra, qual o escriturador (de `memory/escriturador_memory.md`) e se **o informe do escriturador foi usado** (o `tag` aparece no `source` do rendimento). O escriturador é a autoridade de dividendos/JCP — a corretora pode ver só parte (ex.: BBSE3 R$ 454,46 na corretora × R$ 842,87 no escriturador BB). Sinaliza escriturador desconhecido (preencher da B3) ou rendimento que veio só de corretora.
