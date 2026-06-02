@@ -70,7 +70,7 @@ The skills share a 3-tier layout, run from the taxpayer's folder:
 |---|---|
 | `resources/` | **raw** inputs: the B3 `Movimentação`/`Posição` exports + the informe PDFs |
 | `memory/` | the memory files (`ticker_memory.md`, `rf_memory.md`, `rf_value_memory.md`, `mapping_memory.md`) |
-| `processed/` | **derived** artifacts: `brazil_investments.xlsx` (this skill's output) + the transcribed JSONs |
+| `processed/` | **derived** artifacts: `b3_brazil_renda_variavel_avg_price_calculation.xlsx` (this skill's output) + the transcribed JSONs |
 | (root) | the deliverables: `irpf_consolidated.xlsx` + `completeness_report.md` |
 
 ## Workflow
@@ -79,33 +79,39 @@ The skills share a 3-tier layout, run from the taxpayer's folder:
 2. **Update `ticker_memory.md`** with this taxpayer's renames (mergers, BDR/PN→ON), each with a
    source link. Copy the bundled template into your working folder and edit there.
 3. **Run** from the taxpayer folder (see "Folder layout" below):
-   `python scripts/build_bens_direitos.py resources/MOV.xlsx resources/POS.xlsx processed/brazil_investments.xlsx --memory-dir memory --year 2025`
+   `python scripts/build_bens_direitos.py resources/MOV.xlsx resources/POS.xlsx processed/b3_brazil_renda_variavel_avg_price_calculation.xlsx --memory-dir memory --year 2025`
    (the script warns about any movement type missing from `mapping_memory.md` — add a row there).
    Optionally pass `--posicao-anterior resources/POS_PRIOR.xlsx` (the B3 Posição at 31/12 of the **prior**
    year): it fills `valor_<prev>` for renda fixa with the authoritative applied value and corrects
    prior-year quantities for corporate actions (e.g. a grupamento), and adds a
-   `Reconciliation_anterior` sheet. Equity/FII prior cost still comes from the movements (the
+   `reconciliation_previous` sheet. Equity/FII prior cost still comes from the movements (the
    position file has market value, not acquisition cost — total cost is preserved across events).
-4. **Read the AUDIT** printed at the end (also in the `Reconciliation` sheet): every quantity
+4. **Read the AUDIT** printed at the end (also in the `reconciliation` sheet): every quantity
    mismatch between movements and the year-end position is listed by ticker. Each one is a
    corporate action the rules don't capture (a merger that resets cost basis, an exotic
    restructure, a missing rename). Investigate and adjust the IRPF row by hand — the engine
    never auto-overrides the B3 data.
 
-## Output — `brazil_investments.xlsx`
+## Output — `b3_brazil_renda_variavel_avg_price_calculation.xlsx`
+
+Scope: **renda variável** (ações / FII / BDR) — preço médio reconstruction. **Renda fixa**
+(CDB / CRA / CRI / debênture / Tesouro) does NOT get avg_price / custo here — its Bens e Direitos
+value comes from the broker informe (declared via `informes.json`). Sheet order:
 
 | Sheet | Purpose |
 |---|---|
-| `movements_enriched` | every movement + computed ticker, action, running quantity_accumulated, avg_price and custo_acumulado (= avg × qty) |
+| `movements_enriched` | every movement + ticker, action, quantity_accumulated, avg_price, custo_acumulado, and an **`obs`** column ("renda fixa — sem preço médio") |
 | `aux_mapping` | the two lookup tables that drove it (movement→action+provento_type, renames) |
 | `avg_price_summary` | per ticker, end-of-year accumulated_quantity / avg_price / total for each year |
-| `income` | per ticker, (interest, yield, total) for each year |
-| `position` | year-end blocks merged + avg_price, custo_total, tipo, discriminação |
-| `position_anterior` | the prior-year B3 position as-exported + reconstructed avg_price_prev / custo_total_prev — only with `--posicao-anterior`, for auditing |
-| `renda_fixa_amortizavel` | CRA / CRI / debêntures: compra, amortização, juros pagos, compra−amort, saldo declarado (informe), juros decorridos implícito — the explicit fixed-income value calculation |
-| `IRPF_bens_e_direitos` | one row per ticker: grupo / codigo / localizacao / cnpj / discriminacao / valor_(prior) / valor_(current) — type-ready |
-| `IRPF_rendimentos_isentos` | per ticker, value per year + `<year>_corretoras` JSON. **dividendos de ação = código 09**; **rendimentos de FII / debênture incentivada (yield) = código 99 "Outros"** (sem linha dedicada na ficha; ambos isentos, marcados na coluna `tipo_de_rendimento`) |
-| `IRPF_rendimentos_exclusivos` | **JCP (juros sobre capital próprio) = código 10**, tributação exclusiva, per ticker/ano + `_corretoras` |
+| `income` | per ticker, (interest, yield, total) for each year — auditing only (rendimentos are declared from the informe, not from here) |
+| `position` | year-end blocks merged + avg_price, custo_total, tipo, discriminação. **Renda fixa: no custo_total, no discriminação** |
+| `position_previous` | the prior-year position as-exported + reconstructed avg_price_prev / custo_total_prev (RV only; renda fixa sem custo) — only with `--posicao-anterior` |
+| `reconciliation` | year-end position qty vs movement qty per ticker (RV only) |
+| `reconciliation_previous` | same at 31/12 of the prior year — only with `--posicao-anterior` |
+| `irpf_bens_e_direitos_renda_variavel` | one row per **renda variável** ticker: grupo / codigo / localizacao / cnpj / discriminacao / valor_(prior) / valor_(current) — type-ready |
+
+The b3 workbook no longer builds `IRPF_rendimentos_isentos` / `IRPF_rendimentos_exclusivos` (the
+**informe** is the authority on dividendos/JCP/juros) nor a renda-fixa value sheet.
 
 ## Important
 

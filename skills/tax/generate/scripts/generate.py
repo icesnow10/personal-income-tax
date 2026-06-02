@@ -96,8 +96,15 @@ def as_int(v):
 
 
 def load_investimentos(path):
-    """ticker(UPPER) -> {valor_2024, valor_2025, quantidade, preco_medio, discriminacao}."""
-    df = pd.read_excel(path, sheet_name="IRPF_bens_e_direitos")
+    """ticker(UPPER) -> {valor_2024, valor_2025, quantidade, preco_medio, discriminacao}.
+    Reads the b3 renda-variável Bens e Direitos sheet (only ações/FII/BDR — renda fixa is NOT here,
+    its value comes from the informe). The sheet name varies (irpf_bens_e_direitos_renda_variavel),
+    so match by substring."""
+    xl = pd.ExcelFile(path)
+    sheet = next((s for s in xl.sheet_names if "bens_e_direitos" in s.lower()), None)
+    if sheet is None:
+        raise SystemExit(f"sheet de bens (renda variável) não encontrada em {path}: {xl.sheet_names}")
+    df = pd.read_excel(path, sheet_name=sheet)
     out = {}
     for _, r in df.iterrows():
         tk = str(r["ticker"]).strip()

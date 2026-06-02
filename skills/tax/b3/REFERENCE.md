@@ -85,7 +85,12 @@ IRPF "Bens e Direitos" (codes as of recent years — confirm in the program):
 | FII / FIAgro | 7 | 3 | custo_total |
 | **FI-Infra** (Lei 12.431) | 7 | 10 | custo_total — "Fundos de Infraestrutura, FIDC e outros (alíquota 0%)" |
 | CDB / Tesouro (tributados) | 4 | 2 | VALOR APLICADO = position quantity × acquisition unit price (never the curva). CDB: unit price = movimentação COMPRA/VENDA "Valor da Operação" ÷ qty per código. Tesouro: its own "Valor Aplicado" column |
-| LCI / LCA / CRA / CRI / debênture (isentos) | 4 | 3 | LCI/LCA: qty × acquisition unit price. **CRA / CRI / debêntures** amortize and embed juros decorridos B3 can't separate → value is **MANDATORY** from the broker informe via `rf_value_memory.md` (BR format `18.537,55`). Missing it prints an **OBRIGATÓRIO** warning and falls back to compra − amortização (overstates by the juros decorridos). When the override is used the **discriminação records it**: `VALOR DA FICHA = SALDO DO INFORME DA CORRETORA (rf_value_memory) — FONTE: …`. See the `renda_fixa_amortizavel` sheet for the breakdown |
+| LCI / LCA / CRA / CRI / debênture (isentos) | 4 | 3 | declarado pelo **informe** (renda fixa não entra na ficha do b3) |
+
+> **Renda fixa NÃO é montada pelo b3.** O b3 só reconstrói preço médio de **renda variável**
+> (ações/FII/BDR) na `irpf_bens_e_direitos_renda_variavel`. Para CDB/CRA/CRI/debênture/Tesouro a B3 não
+> tem o custo confiável (CRA/CRI/debênture embutem juros decorridos que ela não separa) — o valor de
+> Bens e Direitos vem do **informe da corretora**, declarado no `informes.json` (`b3:false`).
 
 `localizacao = 105` (Brasil) for all. CNPJ: empresa (ações) / fundo (FII); BDR uses ISIN in the
 discriminação; treasury has none. **FI-Infra** is grupo 07 **código 10** (Lei 12.431, alíquota 0%
@@ -114,8 +119,11 @@ all rastreável, no manual entry. Appended in this order after the base discrimi
 
 ### IRPF rendimentos (proventos) → ficha e código
 
-Built into `IRPF_rendimentos_isentos` / `IRPF_rendimentos_exclusivos` (one line per ticker/ano, com
-o split por corretora no `<ano>_corretoras`). Mapping by `provento_type`:
+> O b3 **não monta** as fichas de rendimento — a autoridade dos dividendos/JCP/juros é o **informe**
+> da corretora/escriturador (regime de caixa, somando custódias). A aba `income` do b3 é só auditoria.
+> O mapa abaixo (por `provento_type`) é referência conceitual; os valores declarados vêm do `informes.json`.
+
+Mapping by `provento_type`:
 
 | provento_type | natureza | ficha | código |
 |---|---|---|---|
@@ -144,7 +152,7 @@ At the end of each run, the script prints **AUDIT: N/M OK** comparing the year-e
 accumulated from movements vs the Posição quantity, per main ticker (renda fixa is excluded from
 the quantity audit — it is valued as position quantity × acquisition unit price, not derived from
 the movement quantity engine). The same
-comparison is in the workbook's `Reconciliation` sheet.
+comparison is in the workbook's `reconciliation` sheet.
 
 A mismatch means one of:
 - a rename is missing (`ticker_memory.md` doesn't fold an old code into the current one)

@@ -452,12 +452,16 @@ def write_workbook(out_path, mov, summary, blocks, classification, logic, proven
     ws = wb.active; ws.title = "movements_enriched"
     cols = ["entry_type","date","entry_movement","product","holder","quantity","unit_price","amount",
             "ticker","entry_movement_type","provento_type","quantity_accumulated","cycle","amount_adjusted",
-            "avg_price","custo_acumulado"]
+            "avg_price","custo_acumulado","obs"]
     ws.append(cols); hdr(ws, 8, PURPLE)
     for j in range(9, len(cols)+1):
         ws.cell(1,j).fill=PatternFill("solid",fgColor=LPURPLE); ws.cell(1,j).font=Font(bold=True)
         ws.cell(1,j).alignment=Alignment(horizontal="center")
+    def _is_rf_prod(p):                                    # CDB/CRA/CRI/DEB/LCI/LCA + Tesouro
+        return isinstance(p, str) and (RF_TICKER_RE.match(p) or norm(p).startswith("tesouro"))
     for _, r in mov.iterrows():
+        is_rf = _is_rf_prod(r["product"])
+        obs = "renda fixa — sem preço médio (valor vem da posição/informe, não de preço médio)" if is_rf else ""
         ws.append([r["entry_type"], (r["date"].to_pydatetime() if pd.notna(r["date"]) else None),
                    r["entry_movement"], r["product"], r["holder"], float(r["quantity"]),
                    (None if pd.isna(r["unit_price"]) else float(r["unit_price"])), float(r["amount"]),
@@ -465,7 +469,7 @@ def write_workbook(out_path, mov, summary, blocks, classification, logic, proven
                    (None if pd.isna(r["quantity_accumulated"]) else float(r["quantity_accumulated"])),
                    (None if pd.isna(r["cycle"]) else int(r["cycle"])), float(r["amount_adjusted"]),
                    (None if r["avg_price"] is None or pd.isna(r["avg_price"]) else float(r["avg_price"])),
-                   (None if pd.isna(r["custo_acumulado"]) else float(r["custo_acumulado"]))])
+                   (None if pd.isna(r["custo_acumulado"]) else float(r["custo_acumulado"])), obs])
     for row in ws.iter_rows(min_row=2, min_col=2, max_col=2): row[0].number_format = "yyyy-mm-dd"
     ws.freeze_panes = "A2"
 
@@ -704,32 +708,6 @@ def write_workbook(out_path, mov, summary, blocks, classification, logic, proven
             transfer_text[tk] = (f" // TRANSFERENCIA DE CUSTODIA {parts} "
                                  f"(SEM ALTERACAO DE CUSTO OU QUANTIDADE).")
 
-    # Renda fixa amortizável (CRA / CRI / debênture): the Bens e Direitos value MUST come from the
-    # broker informe (rf_value_memory) — B3 can't strip the juros decorridos paid at purchase, so the
-    # compra−amortização fallback overstates the cost. rf_value_memory is MANDATORY for these; build
-    # the discriminação trace (so the ficha says where the value came from) and the missing list.
-    rf_trace_text, rf_amort_missing, _seen_tr = {}, [], set()
-    for tipo, _, rows in blocks:
-        if tipo != "RENDA FIXA": continue
-        for d in rows:
-            if not is_amortizable(d): continue
-            cod = getcol(d, "Código", "Codigo"); prod = str(getcol(d, "Produto") or "").strip()
-            if not cod or cod in _seen_tr: continue
-            _seen_tr.add(cod)
-            compra, amort, _ = rf_amort_calc(cod, pd.Timestamp(year, 12, 31))
-            valor_b3 = round(compra - amort, 2)
-            ov = rf_value.get(cod)
-            if ov and ov[1] is not None:
-                jd = round(valor_b3 - round(ov[1], 2), 2)
-                rf_trace_text[prod] = (f" // VALOR DA FICHA = SALDO DO INFORME DA CORRETORA "
-                    f"(rf_value_memory): R$ {brl(round(ov[1],2))} — FONTE: {ov[2] or 'informe da corretora'}. "
-                    f"B3 compra-amortizacao = R$ {brl(valor_b3)}; juros decorridos R$ {brl(jd)} NAO entram no custo.")
-            else:
-                rf_amort_missing.append(cod)
-                rf_trace_text[prod] = (f" // VALOR DA FICHA = B3 (COMPRA - AMORTIZACAO) = R$ {brl(valor_b3)} "
-                    f"— FALTA o saldo do informe da corretora em rf_value_memory.md (OBRIGATORIO p/ "
-                    f"CRA/CRI/debenture; este fallback EMBUTE juros decorridos e supera o custo real).")
-
     # Fund incorporations / ticker conversions completed during the fiscal year — when a position's
     # cotas came from a DIFFERENT fund/code (a ticker_memory rename whose origin ROOT differs from
     # the current one) and the old code's last movement falls in `year`. The cost carries over (the
@@ -781,18 +759,18 @@ def write_workbook(out_path, mov, summary, blocks, classification, logic, proven
         for d in rows:
             tk = getcol(d,"Código de Negociação","Codigo de Negociacao"); qty = getcol(d,"Quantidade")
             avg = (summary.get(tk) or {}).get("avg")
-            if tipo == "RENDA FIXA":
-                custo = rf_valor(d)                        # qtd × preço de aquisição (sem curva)
-            else:
-                custo = round(avg*qty,2) if (avg is not None and isinstance(qty,(int,float))) else None
+            is_rf = (tipo == "RENDA FIXA")
+            # renda fixa (deb/cra/cri/tesouro/cdb): SEM custo_total e SEM discriminação — não tem
+            # preço médio; o valor de Bens e Direitos vem da posição/informe, não daqui.
+            custo = None if is_rf else (round(avg*qty,2) if (avg is not None and isinstance(qty,(int,float))) else None)
             line = []
             for col in pcols:
                 if col == "tipo": line.append(tipo)
-                elif col == "avg_price": line.append(avg)
+                elif col == "avg_price": line.append(None if is_rf else avg)
                 elif col == "custo_total": line.append(custo)
                 elif col == "discriminacao":
-                    line.append(discriminacao(d, summary) + incorp_text.get(tk, "")
-                                + amort_text.get(tk, "") + transfer_text.get(tk, ""))
+                    line.append("" if is_rf else (discriminacao(d, summary) + incorp_text.get(tk, "")
+                                + amort_text.get(tk, "") + transfer_text.get(tk, "")))
                 elif col == "Tipo (B3)": line.append(d.get("Tipo"))
                 else: line.append(d.get(col))
             ps.append(line)
@@ -814,7 +792,7 @@ def write_workbook(out_path, mov, summary, blocks, classification, logic, proven
         pfront = ["tipo","Código de Negociação","Produto","Quantidade","avg_price_prev","custo_total_prev"]
         prest = [h for h in punion if h not in ("Código de Negociação","Produto","Quantidade")]
         pcols2 = pfront + prest
-        pa = wb.create_sheet("position_anterior"); pa.append(pcols2); hdr(pa, len(pcols2), LPURPLE)
+        pa = wb.create_sheet("position_previous"); pa.append(pcols2); hdr(pa, len(pcols2), LPURPLE)
         derived_pa = {"tipo","avg_price_prev","custo_total_prev"}
         for j,col in enumerate(pcols2,1):
             if col not in derived_pa:
@@ -828,7 +806,7 @@ def write_workbook(out_path, mov, summary, blocks, classification, logic, proven
                 qty = getcol(d,"Quantidade")
                 if tipo == "RENDA FIXA":
                     avg_p = None
-                    custo_p = rf_valor(d, prior=True)      # qtd × preço de aquisição (sem curva)
+                    custo_p = None                          # renda fixa não recebe custo_total
                 else:
                     tc, pq = prior_total_cost.get(ct), prior_q.get(ct)
                     avg_p = round(tc/pq,6) if (tc is not None and pq) else None
@@ -847,7 +825,7 @@ def write_workbook(out_path, mov, summary, blocks, classification, logic, proven
         pa.freeze_panes = "A2"
 
     # Reconciliation: posição vs movimentação por ticker (revela renames/eventos faltando)
-    rc = wb.create_sheet("Reconciliation")
+    rc = wb.create_sheet("reconciliation")
     rc.append(["ticker","tipo","position_qty","movement_qty_year_end","diff","status"])
     hdr(rc, 6, LPURPLE)
     cut = pd.Timestamp(year, 12, 31)
@@ -884,7 +862,7 @@ def write_workbook(out_path, mov, summary, blocks, classification, logic, proven
     # from the movements at 31/12 of the prior year. Surfaces grupamentos (qty drift), renames and
     # assets the movements can't reach back to. Only built when --posicao-anterior is supplied.
     if prior_blocks:
-        rca = wb.create_sheet("Reconciliation_anterior")
+        rca = wb.create_sheet("reconciliation_previous")
         rca.append([f"ticker", "position_qty_"+str(prev), "movement_qty_"+str(prev), "diff", "status"])
         hdr(rca, 5, LPURPLE)
         cutp = pd.Timestamp(prev, 12, 31)
@@ -905,7 +883,9 @@ def write_workbook(out_path, mov, summary, blocks, classification, logic, proven
         for c,w in zip(range(1,6),[14,18,18,10,54]): rca.column_dimensions[get_column_letter(c)].width=w
         rca.freeze_panes = "A2"
 
-    ir = wb.create_sheet("IRPF_bens_e_direitos")
+    # Só RENDA VARIÁVEL (ações / FII / BDR): o b3 reconstrói o preço médio só desses. Renda fixa
+    # (CDB/CRA/CRI/debênture/Tesouro) NÃO entra aqui — seu valor de Bens e Direitos vem do informe.
+    ir = wb.create_sheet("irpf_bens_e_direitos_renda_variavel")
     # Bens e Direitos asks TWO situations: 31/12 of the prior year and 31/12 of the current
     # (fiscal) year. valor_<year> is the current cost basis (avg × year-end position); valor_
     # <year-1> is the cost basis reconstructed at 31/12 of the prior year from the movements
@@ -932,6 +912,7 @@ def write_workbook(out_path, mov, summary, blocks, classification, logic, proven
             if key not in agg: agg[key] = []; order.append(key)
             agg[key].append(d)
     for tipo, tk in order:
+        if tipo == "RENDA FIXA": continue                  # renda fixa não entra na ficha de renda variável
         ds = agg[(tipo, tk)]
         grupo, codigo = IRPF_CODE.get(tipo, ("",""))
         # isentos (LCI/LCA/CRA/CRI/debênture incentivada) são grupo 04 / código 03; tributados
@@ -962,39 +943,10 @@ def write_workbook(out_path, mov, summary, blocks, classification, logic, proven
             if len(cods) == 1: ticker_label = cods[0]
         ir.append([ticker_label, grupo, codigo, 105, cnpj,
                    discriminacao_agg(tipo, tk, ds, summary) + incorp_text.get(tk, "")
-                   + amort_text.get(tk, "") + transfer_text.get(tk, "") + rf_trace_text.get(tk, ""),
+                   + amort_text.get(tk, "") + transfer_text.get(tk, ""),
                    valor_prev, valor_cur])
     for c,w in zip(range(1,9),[12,7,7,12,18,120,14,14]): ir.column_dimensions[get_column_letter(c)].width = w
     ir.freeze_panes = "A2"
-
-    # renda_fixa_amortizavel: the CRA/CRI/debênture calculation, shown explicitly. From B3 we get
-    # compra, amortização and juros pagos; the Bens e Direitos value (saldo_declarado) is the broker
-    # informe override when present (else compra − amortização). juros_decorridos is the implied
-    # accrued interest paid at purchase = (compra − amort) − saldo, which B3 doesn't separate.
-    cra = wb.create_sheet("renda_fixa_amortizavel")
-    cra.append(["codigo","produto","corretora","valor_compra","amortizacao","juros_pagos",
-                "compra_menos_amort","saldo_declarado","juros_decorridos","fonte"])
-    hdr(cra, 10, LPURPLE)
-    cutoff = pd.Timestamp(year,12,31)
-    seen_cra = set()
-    for tipo,_,rows in blocks:
-        for d in rows:
-            if not is_amortizable(d): continue
-            cod = getcol(d,"Código","Codigo")
-            if not cod or cod in seen_cra: continue
-            seen_cra.add(cod)
-            compra, amort, juros = rf_amort_calc(cod, cutoff)
-            valor_b3 = round(compra - amort, 2)
-            ov = rf_value.get(cod)
-            saldo = round(ov[1],2) if (ov and ov[1] is not None) else valor_b3
-            jd = round(valor_b3 - saldo, 2) if saldo is not None else None
-            fonte = ov[2] if (ov and ov[1] is not None) else "B3 (compra − amortização)"
-            cra.append([cod, str(getcol(d,"Produto") or "").strip(),
-                        getcol(d,"Instituição","Instituicao") or "",
-                        compra, amort, juros, valor_b3, saldo, jd, fonte])
-    for c,w in zip(range(1,11),[14,46,24,14,13,12,18,16,16,40]):
-        cra.column_dimensions[get_column_letter(c)].width = w
-    cra.freeze_panes = "A2"
 
     # ---- IRPF rendimentos isentos (tipo 9: dividendos + rendimentos FII) and exclusivos
     # (tipo 10: JCP). Per-ticker totals, only main tickers (equity/FII/BDR), CNPJ and
@@ -1053,27 +1005,9 @@ def write_workbook(out_path, mov, summary, blocks, classification, logic, proven
             if hide_old and int(col.split("_")[0]) < prev: cd.hidden = True
         if freeze: ws.freeze_panes = "E2"
 
-    # Rendimentos Isentos: dividendos de ação = código 09; rendimentos de FII = código 99 ("Outros",
-    # sem linha dedicada na ficha; descrição "0703 - Fundos de Investimento Imobiliário"). Ambos
-    # isentos, mas códigos diferentes. Tributação Exclusiva: JCP = código 10.
-    # return_of_capital (amortização) NÃO entra aqui: é devolução de capital, não rendimento — o
-    # efeito já está no custo de aquisição (Bens e Direitos); declará-lo como renda seria duplicar.
-    build_income_sheet("IRPF_rendimentos_isentos", [(9, {"dividend"}), (99, {"yield"})],
-                       hide_old=True, freeze=False)
-    build_income_sheet("IRPF_rendimentos_exclusivos", [(10, {"interest_on_equity"})],
-                       hide_old=True, freeze=False)
-
-    if rf_no_unit:
-        print("NOTE: renda fixa sem COMPRA na movimentação e sem 'Valor Aplicado' na posição — "
-              "valor aplicado não derivável, valor fica em branco (preencher à mão):\n  "
-              + "\n  ".join(rf_no_unit))
-
-    if rf_amort_missing:
-        print("OBRIGATORIO: CRA/CRI/debênture exigem o saldo do INFORME DA CORRETORA em "
-              "rf_value_memory.md (fonte autoritativa). Sem isso o valor usa o fallback "
-              "compra-amortização, que EMBUTE juros decorridos e supera o custo. "
-              "Preencha rf_value_memory.md (codigo | valor_anterior | valor_atual | source) para:\n  "
-              + "\n  ".join(rf_amort_missing))
+    # NÃO montamos as fichas IRPF_rendimentos_isentos / IRPF_rendimentos_exclusivos: a autoridade
+    # dos rendimentos (dividendos/JCP/juros) é o INFORME da corretora/escriturador, não o b3. O b3 só
+    # consolida a posição/preço médio de renda variável; a aba `income` acima fica como auditoria.
 
     wb.save(out_path)
 
