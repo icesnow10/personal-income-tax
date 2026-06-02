@@ -50,13 +50,17 @@ EMPTY_TEMPLATES = {
    "Add yours:\n\n"
    "| from_produto | to_produto | note | source |\n|---|---|---|---|\n"),
  "rf_value_memory.md": (
-   "# rf_value_memory — Bens e Direitos value override (CRA / debêntures)\n\n"
-   "For amortizing / secondary-market fixed income (CRA, CRI, debêntures), B3 alone CANNOT produce\n"
-   "the Bens e Direitos value: the purchase price embeds **juros decorridos** (accrued interest paid\n"
-   "to the seller) that B3 never separates, and the principal amortizes over time. The broker informe\n"
-   "(BTG/NU) gives the authoritative Saldo. Pin it here per security código, with the source. CDB,\n"
-   "LCI, LCA and Tesouro do NOT need this (position quantity × acquisition unit price already matches).\n\n"
-   "| codigo | valor_anterior | valor_atual | note | source |\n|---|---|---|---|---|\n"),
+   "# rf_value_memory — Bens e Direitos value override (CRA / CRI / debêntures) — OBRIGATÓRIO\n\n"
+   "**MANDATORY** for amortizing / secondary-market fixed income (CRA, CRI, debêntures): B3 alone\n"
+   "CANNOT produce the Bens e Direitos value — the purchase price embeds **juros decorridos** (accrued\n"
+   "interest paid to the seller) that B3 never separates, and the principal amortizes over time. The\n"
+   "broker informe (BTG/NU) gives the authoritative Saldo — pin it here per security código WITH the\n"
+   "source (the value is traced into the discriminação). Without it the build falls back to\n"
+   "compra−amortização (overstates the cost by the juros decorridos) and prints an OBRIGATÓRIO warning.\n"
+   "CDB, LCI, LCA and Tesouro do NOT need this (qty × acquisition unit price already matches).\n\n"
+   "Valores em formato **BR** (`18.537,55`, não `18537.55`).\n\n"
+   "| codigo | valor_anterior | valor_atual | note | source |\n|---|---|---|---|---|\n"
+   "| EXEMPLO25 | | 18.537,55 | CRA exemplo | informe BTG (saldo 31/12) |\n"),
 }
 
 
@@ -700,6 +704,32 @@ def write_workbook(out_path, mov, summary, blocks, classification, logic, proven
             transfer_text[tk] = (f" // TRANSFERENCIA DE CUSTODIA {parts} "
                                  f"(SEM ALTERACAO DE CUSTO OU QUANTIDADE).")
 
+    # Renda fixa amortizável (CRA / CRI / debênture): the Bens e Direitos value MUST come from the
+    # broker informe (rf_value_memory) — B3 can't strip the juros decorridos paid at purchase, so the
+    # compra−amortização fallback overstates the cost. rf_value_memory is MANDATORY for these; build
+    # the discriminação trace (so the ficha says where the value came from) and the missing list.
+    rf_trace_text, rf_amort_missing, _seen_tr = {}, [], set()
+    for tipo, _, rows in blocks:
+        if tipo != "RENDA FIXA": continue
+        for d in rows:
+            if not is_amortizable(d): continue
+            cod = getcol(d, "Código", "Codigo"); prod = str(getcol(d, "Produto") or "").strip()
+            if not cod or cod in _seen_tr: continue
+            _seen_tr.add(cod)
+            compra, amort, _ = rf_amort_calc(cod, pd.Timestamp(year, 12, 31))
+            valor_b3 = round(compra - amort, 2)
+            ov = rf_value.get(cod)
+            if ov and ov[1] is not None:
+                jd = round(valor_b3 - round(ov[1], 2), 2)
+                rf_trace_text[prod] = (f" // VALOR DA FICHA = SALDO DO INFORME DA CORRETORA "
+                    f"(rf_value_memory): R$ {brl(round(ov[1],2))} — FONTE: {ov[2] or 'informe da corretora'}. "
+                    f"B3 compra-amortizacao = R$ {brl(valor_b3)}; juros decorridos R$ {brl(jd)} NAO entram no custo.")
+            else:
+                rf_amort_missing.append(cod)
+                rf_trace_text[prod] = (f" // VALOR DA FICHA = B3 (COMPRA - AMORTIZACAO) = R$ {brl(valor_b3)} "
+                    f"— FALTA o saldo do informe da corretora em rf_value_memory.md (OBRIGATORIO p/ "
+                    f"CRA/CRI/debenture; este fallback EMBUTE juros decorridos e supera o custo real).")
+
     # Fund incorporations / ticker conversions completed during the fiscal year — when a position's
     # cotas came from a DIFFERENT fund/code (a ticker_memory rename whose origin ROOT differs from
     # the current one) and the old code's last movement falls in `year`. The cost carries over (the
@@ -932,7 +962,7 @@ def write_workbook(out_path, mov, summary, blocks, classification, logic, proven
             if len(cods) == 1: ticker_label = cods[0]
         ir.append([ticker_label, grupo, codigo, 105, cnpj,
                    discriminacao_agg(tipo, tk, ds, summary) + incorp_text.get(tk, "")
-                   + amort_text.get(tk, "") + transfer_text.get(tk, ""),
+                   + amort_text.get(tk, "") + transfer_text.get(tk, "") + rf_trace_text.get(tk, ""),
                    valor_prev, valor_cur])
     for c,w in zip(range(1,9),[12,7,7,12,18,120,14,14]): ir.column_dimensions[get_column_letter(c)].width = w
     ir.freeze_panes = "A2"
@@ -1037,6 +1067,13 @@ def write_workbook(out_path, mov, summary, blocks, classification, logic, proven
         print("NOTE: renda fixa sem COMPRA na movimentação e sem 'Valor Aplicado' na posição — "
               "valor aplicado não derivável, valor fica em branco (preencher à mão):\n  "
               + "\n  ".join(rf_no_unit))
+
+    if rf_amort_missing:
+        print("OBRIGATORIO: CRA/CRI/debênture exigem o saldo do INFORME DA CORRETORA em "
+              "rf_value_memory.md (fonte autoritativa). Sem isso o valor usa o fallback "
+              "compra-amortização, que EMBUTE juros decorridos e supera o custo. "
+              "Preencha rf_value_memory.md (codigo | valor_anterior | valor_atual | source) para:\n  "
+              + "\n  ".join(rf_amort_missing))
 
     wb.save(out_path)
 

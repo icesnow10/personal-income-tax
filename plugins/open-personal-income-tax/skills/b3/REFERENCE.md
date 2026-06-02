@@ -85,7 +85,7 @@ IRPF "Bens e Direitos" (codes as of recent years — confirm in the program):
 | FII / FIAgro | 7 | 3 | custo_total |
 | **FI-Infra** (Lei 12.431) | 7 | 10 | custo_total — "Fundos de Infraestrutura, FIDC e outros (alíquota 0%)" |
 | CDB / Tesouro (tributados) | 4 | 2 | VALOR APLICADO = position quantity × acquisition unit price (never the curva). CDB: unit price = movimentação COMPRA/VENDA "Valor da Operação" ÷ qty per código. Tesouro: its own "Valor Aplicado" column |
-| LCI / LCA / CRA / CRI / debênture (isentos) | 4 | 3 | LCI/LCA: qty × acquisition unit price. **CRA / CRI / debêntures** amortize and embed juros decorridos B3 can't separate → value from the broker informe via `rf_value_memory.md` (else compra − amortização). See the `renda_fixa_amortizavel` sheet for the breakdown |
+| LCI / LCA / CRA / CRI / debênture (isentos) | 4 | 3 | LCI/LCA: qty × acquisition unit price. **CRA / CRI / debêntures** amortize and embed juros decorridos B3 can't separate → value is **MANDATORY** from the broker informe via `rf_value_memory.md` (BR format `18.537,55`). Missing it prints an **OBRIGATÓRIO** warning and falls back to compra − amortização (overstates by the juros decorridos). When the override is used the **discriminação records it**: `VALOR DA FICHA = SALDO DO INFORME DA CORRETORA (rf_value_memory) — FONTE: …`. See the `renda_fixa_amortizavel` sheet for the breakdown |
 
 `localizacao = 105` (Brasil) for all. CNPJ: empresa (ações) / fundo (FII); BDR uses ISIN in the
 discriminação; treasury has none. **FI-Infra** is grupo 07 **código 10** (Lei 12.431, alíquota 0%
