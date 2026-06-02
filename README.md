@@ -19,16 +19,20 @@ npx skills@latest add icesnow10/personal-income-tax
 
 ## Getting the inputs (onboarding)
 
-Before running anything, drop two kinds of files into the taxpayer's `resources/` folder:
+Gather whatever applies to you into the taxpayer's `resources/` folder — only what you actually have:
 
-**1. B3 exports** — from the *área do investidor* ([investidor.b3.com.br](https://www.investidor.b3.com.br/), menu **Extratos**):
-- **Movimentação** — the **full history since your first trade** (every year), exported to Excel. This is what `b3` replays to rebuild the average cost (preço médio).
-- **Posição** at **31/12 of the base year** (the year you're declaring), exported to Excel — the year-end holdings.
-- **Posição** at **31/12 of the previous year** — recommended, for the opening balance and corporate-action checks.
+- **Informes de Rendimentos** — the IRPF informe of the base year from each institution where you hold
+  (or held) assets or cash: banks, brokers, fintechs (Nubank, Itaú, Bradesco, BB, Wise, Nomad, BTG, XP, …).
+  This is the baseline most people need.
+- **B3 exports** *(only if you have/had assets custodiados na B3 — ações, FIIs, BDRs, Tesouro, renda fixa)* —
+  from the *área do investidor* ([investidor.b3.com.br](https://www.investidor.b3.com.br/) → **Extratos**):
+  **Movimentação** (the full history since your first trade — what `b3` replays to rebuild the preço médio),
+  the **Posição** at 31/12 of the base year, and ideally the **Posição** at 31/12 of the previous year.
+  No B3 holdings? Skip this and the `b3` step entirely.
 
-**2. Informes de Rendimentos** — download the IRPF informe of the base year from **every institution** where you hold (or held) assets or cash: brokers, banks and fintechs (BTG, Nubank, Itaú, Bradesco, Banco do Brasil, Wise, Nomad, XP, …). Drop each PDF (or print) into `resources/`.
-
-You don't have to be exhaustive on the first pass: **`completeness` audits the B3 assets against the informes you provided and flags any asset still missing a supporting informe** — and it pulls each ação/FII escriturador from the B3 API to check the authoritative dividend/JCP statement was used. The report tells you exactly which documents still need to be fetched, so you loop: add the missing informe → re-run.
+No need to be exhaustive on the first pass: **`completeness` flags any asset still missing a supporting
+informe** (and, for B3 assets, pulls the escriturador from the B3 API to check the authoritative
+dividend/JCP statement was used). The report tells you what's still missing — add it and re-run.
 
 ## Pipeline (investments)
 
