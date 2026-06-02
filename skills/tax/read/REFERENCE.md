@@ -41,4 +41,4 @@ JSON honestly from the informes and let `/completeness` flag divergences (loop b
 | JCP (juros sobre capital próprio) | `exclusiva` | 10 |
 | Rendimento de RDB/CDB/Tesouro/fundo come-cotas (com IR na fonte) | `exclusiva` | 06 |
 
-Schema completo dos campos em [../generate/REFERENCE.md](../generate/REFERENCE.md). Not tax advice.
+Schema completo dos campos em [../consolidate/REFERENCE.md](../consolidate/REFERENCE.md). Not tax advice.

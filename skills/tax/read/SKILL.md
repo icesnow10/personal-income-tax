@@ -15,8 +15,8 @@ transcrição unificada que alimenta o resto do pipeline.
 ## Saída — `processed/informes.json` (unificado)
 
 Um único objeto com três listas (uma por ficha). É o **mesmo** arquivo lido por
-[/generate](../generate/SKILL.md) e [/completeness](../completeness/SKILL.md). Schema completo em
-[../generate/REFERENCE.md](../generate/REFERENCE.md):
+[/generate](../consolidate/SKILL.md) e [/completeness](../completeness/SKILL.md). Schema completo em
+[../consolidate/REFERENCE.md](../consolidate/REFERENCE.md):
 
 ```json
 {
@@ -45,8 +45,8 @@ Um único objeto com três listas (uma por ficha). É o **mesmo** arquivo lido p
    `isentos` / `exclusiva`), aplicando as regras de [REFERENCE.md](REFERENCE.md) (isento×exclusiva,
    provento por escriturador, regime de caixa, incorporações/renames, não-B3, etc.).
 3. **Escreva `processed/informes.json`** com as três listas. Para um esqueleto vazio:
-   `python ../generate/scripts/generate.py --template processed/informes.json`.
-4. **Siga para [/generate](../generate/SKILL.md)** e depois **[/completeness](../completeness/SKILL.md)**
+   `python ../consolidate/scripts/generate.py --template processed/informes.json`.
+4. **Siga para [/generate](../consolidate/SKILL.md)** e depois **[/completeness](../completeness/SKILL.md)**
    (loop build → verify) — toda pendência do relatório volta para ajustar este `informes.json`.
 
 ## Importante

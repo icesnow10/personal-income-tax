@@ -219,10 +219,27 @@ def style(ws, cols, vcols):
     ws.freeze_panes = "A2"
 
 
+def load_renda_fixa(path):
+    """Read the renda_fixa workbook (bens_e_direitos / isentos / exclusiva sheets) → row lists.
+    These are the RF items renda_fixa owns; consolidate drops the matching items from informes.json
+    so nothing is double-counted."""
+    if not path or not Path(path).exists():
+        return {"bens": [], "isentos": [], "exclusiva": []}
+    xl = pd.ExcelFile(path)
+    def rows(name):
+        nm = next((s for s in xl.sheet_names if str(s).strip().lower() == name), None)
+        if nm is None: return []
+        df = pd.read_excel(path, sheet_name=nm)
+        return [{k: (None if (isinstance(v, float) and pd.isna(v)) else v) for k, v in rec.items()}
+                for rec in df.to_dict("records")]
+    return {"bens": rows("bens_e_direitos"), "isentos": rows("isentos"), "exclusiva": rows("exclusiva")}
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--investimentos")
     ap.add_argument("--json")
+    ap.add_argument("--renda-fixa", dest="renda_fixa", help="renda_fixa workbook (RF bens/isentos/exclusiva)")
     ap.add_argument("--outdir", default=".")
     ap.add_argument("--template", metavar="PATH", help="write an empty unified informes.json skeleton and exit")
     a = ap.parse_args()
@@ -245,13 +262,26 @@ def main():
 
     inv = load_investimentos(a.investimentos)
     data = json.loads(Path(a.json).read_text(encoding="utf-8"))
+    rf = load_renda_fixa(a.renda_fixa)
     outdir = Path(a.outdir); outdir.mkdir(parents=True, exist_ok=True)
     audit = []
 
-    # Single workbook, one sheet per IRPF section
-    bd  = build_bens(data.get("bens"), inv, audit)
-    iso = norm_rows(data.get("isentos"))
-    exc = norm_rows(data.get("exclusiva"))
+    # renda_fixa owns the RF slice; drop the matching informes.json items so nothing doubles.
+    rf_bens_keys = {str(r.get("key", "")).strip().upper() for r in rf["bens"]}
+    rf_excl_keys = {str(r.get("key", "")).strip().upper() for r in rf["exclusiva"]}
+    json_bens = [it for it in (data.get("bens") or []) if str(it.get("key", "")).strip().upper() not in rf_bens_keys]
+    json_isentos = [it for it in (data.get("isentos") or []) if as_int(it.get("codigo")) != 12]   # cód 12 = renda_fixa
+    json_excl = [it for it in (data.get("exclusiva") or []) if str(it.get("key", "")).strip().upper() not in rf_excl_keys]
+
+    # bens: renda variável (informes b3:true via inv) + não-B3 não-RF (informes) + RF (renda_fixa)
+    bd = build_bens(json_bens, inv, audit)
+    for r in rf["bens"]:
+        bd.append({"origem": "renda_fixa", "grupo": as_int(r.get("grupo")), "codigo": as_int(r.get("codigo")),
+                   "localizacao": as_int(r.get("localizacao", 105)), "cnpj": fmt_cnpj(r.get("cnpj", "")),
+                   "discriminacao": r.get("descr") or "", "valor_2024": brnum(r.get("valor_2024")),
+                   "valor_2025": brnum(r.get("valor_2025")), "fonte": r.get("source", "")})
+    iso = norm_rows(json_isentos) + norm_rows(rf["isentos"])
+    exc = norm_rows(json_excl) + norm_rows(rf["exclusiva"])
 
     wb = Workbook()
     write_sheet(wb, "bens_e_direitos", bd, "bens")
@@ -265,8 +295,9 @@ def main():
     print(f"  bens_e_direitos       {len(bd)} itens, total 2025 R$ {tot(bd):,.2f}")
     print(f"  isentos               {len(iso)} itens, total R$ {tot(iso):,.2f}")
     print(f"  exclusiva_definitiva  {len(exc)} itens")
-    print("\nAUDIT (B3 cross-check brazil_investments.xlsx × informes.json):")
-    print("\n".join(audit) if audit else "  all B3 assets in brazil_investments.xlsx are classified in informes.json — OK")
+    print(f"  (renda_fixa: {len(rf['bens'])} bens RF + {len(rf['isentos'])} isentos + {len(rf['exclusiva'])} exclusiva)")
+    print("\nAUDIT (renda variável B3 × informes.json):")
+    print("\n".join(audit) if audit else "  all renda-variável B3 assets are classified in informes.json — OK")
 
 
 if __name__ == "__main__":

@@ -1,6 +1,6 @@
 ---
-name: b3
-description: Generate the Brazilian IRPF "Bens e Direitos" from B3 exports. Computes the average acquisition cost (preço médio) per ticker from the Movimentação history and builds the year-end position plus per-asset declaration rows for ações, FIIs, BDRs and Tesouro/renda fixa. Use when the user has B3 "Movimentação" and/or "Posição" spreadsheets, or mentions preço médio, custo de aquisição, bens e direitos, ações/FII/BDR/Tesouro Direto, or declaring B3 holdings in the IRPF (declaração de imposto de renda).
+name: renda_variavel
+description: Reconstruct the average acquisition cost (preço médio) of B3 renda variável (ações, FIIs, BDRs) from the Movimentação history and build the year-end Bens e Direitos rows — renda variável ONLY. Outputs b3_brazil_renda_variavel_avg_price_calculation.xlsx. Renda fixa is NOT handled here (see the renda_fixa skill). Use when the user has B3 "Movimentação"/"Posição" exports, or mentions preço médio, custo de aquisição, bens e direitos de ações/FII/BDR.
 ---
 
 # B3 → IRPF "Bens e Direitos"

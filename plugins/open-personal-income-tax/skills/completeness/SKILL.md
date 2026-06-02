@@ -8,12 +8,12 @@ description: Audit the generated b3_brazil_renda_variavel_avg_price_calculation.
 Cross-check the two views and write a single **`.md`** report, organized by the **IRPF fichas**:
 
 1. **b3_source** — the `irpf_bens_e_direitos_renda_variavel` sheet of
-   `b3_brazil_renda_variavel_avg_price_calculation.xlsx` (the [b3](../b3/SKILL.md) output): **renda
+   `b3_brazil_renda_variavel_avg_price_calculation.xlsx` (the [b3](../renda_variavel/SKILL.md) output): **renda
    variável only** (ações/FII/BDR — preço médio). The b3 workbook no longer carries rendimentos sheets
    (authority for rendimentos is the informe) nor renda-fixa value (declared from the informe).
 2. **informe_de_rendimentos** — `processed/informes.json`, the unified transcription that
    [/read](../read/SKILL.md) builds from every PDF in `resources/`. The **same** file
-   [/generate](../generate/SKILL.md) consumes — one transcription, not two.
+   [/generate](../consolidate/SKILL.md) consumes — one transcription, not two.
 
 **Who is the source of truth — por ficha** (see also [REFERENCE.md](REFERENCE.md) "Boas práticas / red flags"):
 - **Bens e Direitos — valor / custo / preço médio → b3_source** (consolidated, amortização abatida). The
@@ -31,7 +31,7 @@ must be declared by hand — this skill flags those so nothing is missed.
 Run from the **taxpayer folder** (layout `resources/` raw → `processed/` derived → root deliverables):
 - **`processed/b3_brazil_renda_variavel_avg_price_calculation.xlsx`** (the b3 skill output).
 - **`processed/informes.json`** — the unified transcription built by [/read](../read/SKILL.md). A single
-  object with `bens` / `isentos` / `exclusiva` lists (schema in [../generate/REFERENCE.md](../generate/REFERENCE.md)):
+  object with `bens` / `isentos` / `exclusiva` lists (schema in [../consolidate/REFERENCE.md](../consolidate/REFERENCE.md)):
   ```json
   {
     "bens":      [{"key":"NUIF11","b3":true,"grupo":7,"codigo":10,"cnpj":"...","quantidade":9,"valor_2025":979.20,"source":"btg_FD0257"},

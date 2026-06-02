@@ -19,7 +19,7 @@ images. The agent extracts (reads PDFs and reasons); the script only matches, di
 
 ## Normalized schema (informes.json) — built by /read
 The unified transcription is a single object with `bens` / `isentos` / `exclusiva` lists (the **same**
-file `/generate` consumes). Full schema in [../generate/REFERENCE.md](../generate/REFERENCE.md):
+file `/generate` consumes). Full schema in [../consolidate/REFERENCE.md](../consolidate/REFERENCE.md):
 ```json
 {
   "bens":      [{"key":"VALE3","b3":true,"grupo":3,"codigo":1,"cnpj":"33592510000154","quantidade":20,"source":"btg_787"},
