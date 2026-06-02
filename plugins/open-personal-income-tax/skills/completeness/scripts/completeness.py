@@ -194,6 +194,37 @@ def load_informes(path):
     return out
 
 
+def parse_md_table(path):
+    """Tiny markdown-table reader: returns list of dicts keyed by the (lowercased) header cells.
+    Ignores lines outside the first pipe-table and the |---| separator."""
+    rows, header = [], None
+    for ln in Path(path).read_text(encoding="utf-8").splitlines():
+        s = ln.strip()
+        if not (s.startswith("|") and s.endswith("|")): continue
+        cells = [c.strip() for c in s.strip("|").split("|")]
+        if set("".join(cells)) <= set("-: "):            # separator row
+            continue
+        if header is None:
+            header = [c.lower() for c in cells]; continue
+        if len(cells) == len(header):
+            rows.append(dict(zip(header, cells)))
+    return rows
+
+
+def load_escriturador(path):
+    """ticker(UPPER) -> {escriturador, cnpj, tag, source}. The `tag` is the lowercase substring expected
+    in a rendimento `source` when THAT escriturador's informe was actually used (e.g. 'bradesco')."""
+    if not path or not os.path.exists(path): return {}
+    out = {}
+    for r in parse_md_table(path):
+        tk = norm(r.get("ticker")).upper()
+        if not tk or tk.startswith("EXEMPLO"): continue
+        tag = (r.get("tag") or r.get("escriturador") or "").strip().lower()
+        out[tk] = {"escriturador": r.get("escriturador", "").strip(),
+                   "cnpj": r.get("cnpj", "").strip(), "tag": tag, "source": r.get("source", "").strip()}
+    return out
+
+
 def _merge(a, b):
     """Fold informe item b into a (same b3 ticker after a rename) — sum valor/quantidade, keep the
     component breakdown and union the PDF sources, for traceability of the aglutination."""
@@ -307,6 +338,8 @@ def status_val(vb, vi, tol, authority="b3_source"):
 def compare(args):
     b3 = load_b3(args.investimentos)
     inf = apply_renames(load_informes(args.informes), b3.get("_renames", {}))
+    esc_path = args.escriturador_memory or os.path.join("memory", "escriturador_memory.md")
+    esc = load_escriturador(esc_path)
     md = args.out if args.out.lower().endswith(".md") else os.path.splitext(args.out)[0] + ".md"
 
     L = ["# Completeness — b3_source × informe_de_rendimentos (por ficha do IRPF)\n",
@@ -388,6 +421,57 @@ def compare(args):
             L.append(f"| {cod:02d} | **SOMA código {cod:02d}** | **{brl(s_b3)}** | **{brl(s_inf)}** | | **{sd}** |")
             L.append("")
 
+    # ---------------- escriturador das ações/FII (o informe do escriturador foi usado?) ----------------
+    # O escriturador emite o informe AUTORITATIVO de dividendos/JCP do papel (mais que a corretora).
+    # Confere, por ação/FII, se o `source` do rendimento referencia o escriturador (memory tag).
+    equities = {tk: r for tk, r in b3["bens"].items()
+                if r.get("grupo") in (3, 7) or (r.get("grupo") == 4 and r.get("codigo") == 4)}
+    def tipo_b3(g, c):
+        if g == 3: return "ação (B3 empresas-listadas)"
+        if g == 7 and c == 10: return "FI-Infra (B3 fi-infra-listados)"
+        if g == 7: return "FII (B3 fiis-listados)"
+        if g == 4 and c == 4: return "BDR (B3 bdrs-patrocinados / nao-patrocinados-listados)"
+        return "outro tipo (buscar o escriturador na B3 ou por busca web)"
+    esc_acts = []
+    if equities:
+        L += ["## Escriturador das ações/FII (o informe do escriturador foi usado?)\n",
+              "_O escriturador é a autoridade dos dividendos/JCP do papel. Conferência: alguma fonte do "
+              "rendimento é o informe do escriturador? Preencha `memory/escriturador_memory.md` a partir da "
+              "B3 ([ações](https://www.b3.com.br/pt_br/produtos-e-servicos/negociacao/renda-variavel/empresas-listadas.htm) · "
+              "[FIIs](https://www.b3.com.br/pt_br/produtos-e-servicos/negociacao/renda-variavel/fundos-de-investimentos/fii/fiis-listados/) · "
+              "[FI-Infra](https://www.b3.com.br/pt_br/produtos-e-servicos/negociacao/renda-variavel/fundos-de-investimentos/fi-infra/fi-infra-listados/) · "
+              "[BDR patrocinado](https://www.b3.com.br/pt_br/produtos-e-servicos/negociacao/renda-variavel/bdrs/bdrs-patrocinados/bdrs-patrocinados-listados/) · "
+              "[BDR não patrocinado](https://www.b3.com.br/pt_br/produtos-e-servicos/negociacao/renda-variavel/bdrs/bdrs-nao-patrocinados/bdrs-nao-patrocinados-listados/))._\n",
+              "| ticker | grupo | escriturador | usou o informe do escriturador? | rendimentos (fontes) |",
+              "|---|--:|---|---|---|"]
+        for tk in sorted(equities):
+            grupo = equities[tk].get("grupo")
+            srcs = []
+            for ficha in ("isentos", "exclusiva"):
+                for (c, k), rec in inf[ficha].items():
+                    if k == tk and rec.get("source"): srcs.append(rec["source"])
+            srcs_str = " · ".join(dict.fromkeys(srcs)); src_low = srcs_str.lower()
+            e = esc.get(tk)
+            if not e:
+                tipo = tipo_b3(equities[tk].get("grupo"), equities[tk].get("codigo"))
+                nome, st = "—", f"⚠️ escriturador desconhecido — PROCURAR ({tipo}) e preencher escriturador_memory.md"
+                bump("escriturador desconhecido")
+                esc_acts.append(f"- [ ] **`{tk}`**: escriturador desconhecido — **procurar o escriturador** "
+                                f"em {tipo}, preencher `memory/escriturador_memory.md` e re-rodar.")
+            else:
+                nome = e["escriturador"] or "—"
+                if not srcs:
+                    st = "— (sem rendimentos no ano — nada a conferir)"
+                elif e["tag"] and e["tag"] in src_low:
+                    st = f"✅ sim ({e['tag']})"; bump("escriturador conferido")
+                else:
+                    st = (f"⚠️ NÃO — rendimentos vieram só de corretora; buscar o informe do escriturador "
+                          f"({nome})"); bump("escriturador NÃO conferido")
+                    esc_acts.append(f"- [ ] **`{tk}`**: rendimento sem o informe do escriturador ({nome}) — "
+                                    f"buscar esse informe (dividendos/JCP podem estar incompletos, ex.: BBSE3).")
+            L.append(f"| {tk} | {grupo} | {nome} | {st} | {srcs_str} |")
+        L.append("")
+
     # ---------------- divergências de classificação (mesmo ativo+valor, código diferente) ----------------
     # ex.: BBSE3 7,41 — b3 mapeia "Rendimento" de ação para isento/99, mas o informe (Nubank) classifica
     # como JCP/exclusiva/10. Mesmo valor em código diferente = reclassificação, não valor faltando.
@@ -450,6 +534,7 @@ def compare(args):
     for (tk, v, fb, cb, fi, ci) in recl:
         acts.append(f"- [ ] **`{tk}`** (rendimento {brl(v)}): reclassificação — b3 {fb}/cód {cb:02d} × "
                     f"informe {fi}/cód {ci:02d}; declarar no código do informe.")
+    acts += esc_acts
     if not acts: acts = ["- [x] Sem pendências estruturais (confira as divergências de valor nas tabelas)."]
     L += acts
 
@@ -474,6 +559,7 @@ def main():
     pc.add_argument("--informes", required=True, help="informe_de_rendimentos: informes.json (com 'ficha' por item)")
     pc.add_argument("--out", default="completeness_report.md")
     pc.add_argument("--consolidado", help="irpf_consolidated.xlsx a auditar/editar (default: ao lado do --out)")
+    pc.add_argument("--escriturador-memory", help="memory/escriturador_memory.md (ticker -> escriturador; default: memory/escriturador_memory.md)")
     pc.add_argument("--no-apply", action="store_true", help="só auditar (não editar o consolidado); divergências são listadas")
     pc.add_argument("--tol", type=float, default=0.5)
     a = ap.parse_args()

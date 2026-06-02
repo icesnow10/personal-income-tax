@@ -40,6 +40,9 @@ Run from the **taxpayer folder** (layout `resources/` raw → `processed/` deriv
   ```
   For ações/FII the informe gives only **quantidade** (no BRL value) → put `quantidade`, omit `valor_2025`.
   `source` is the **PDF** the value came from (joined with `+`/`/` across PDFs) → the **fonte (PDF)** column.
+- **`memory/escriturador_memory.md`** (optional) — living memory `ticker → escriturador` (nome, CNPJ,
+  `tag`, source da B3), template em [escriturador_memory.md](escriturador_memory.md). Liga o papel ao
+  escriturador para a auditoria "o informe do escriturador foi usado?". Override com `--escriturador-memory`.
 
 ## Workflow
 1. **Build the transcription** with [/read](../read/SKILL.md) (or run it standalone). Parsing aid:
@@ -53,6 +56,7 @@ Run from the **taxpayer folder** (layout `resources/` raw → `processed/` deriv
 3. **Read the `.md`** — sections per IRPF ficha:
    - **Bens e Direitos**: `grupo | código | asset | qtd b3 | qtd informe | valor b3 | valor informe | fonte (PDF) | status`. Código mismatch is flagged inline (`⚠️b3=3/inf=10`); a TOTAL-a-declarar line counts the não-B3 items to add by hand.
    - **Rendimentos Isentos** (09/99) and **Tributação Exclusiva** (06/10): per código, with a **SOMA por código** (a per-item gap that reconciles at the total is visible).
+   - **Escriturador das ações/FII**: por ação/FII/FI-Infra, qual o escriturador (de `memory/escriturador_memory.md`) e se **o informe do escriturador foi usado** (o `tag` aparece no `source` do rendimento). O escriturador é a autoridade de dividendos/JCP — a corretora pode ver só parte (ex.: BBSE3 R$ 454,46 na corretora × R$ 842,87 no escriturador BB). Sinaliza escriturador desconhecido (preencher da B3) ou rendimento que veio só de corretora.
    - **Divergências de classificação**: same asset+value under a different código between b3 and informe (reclassificação — ex.: BBSE3 cód 99 no b3 × cód 10 no informe).
    - **Ajustes no `irpf_consolidated.xlsx`**: o que foi editado (valor corrigido p/ a autoridade) e o que foi conferido — espelha a coluna `obs_completeness` do arquivo.
    - **Resumo** + **Action items**.
@@ -74,6 +78,9 @@ The reconciliation applies two cross-source mechanisms automatically:
 | `FALTA em b3_source (B3!)` | ticker B3 que o b3 não pegou | **bug** — investigar o `/b3` |
 | `FALTA no informe_de_rendimentos` | está no b3, sem informe que suporte | confirmar / achar o documento |
 | reclassificação (seção própria) | mesmo ativo+valor em código diferente | declarar no código do **informe** |
+| `✅ sim (tag)` (escriturador) | o informe do escriturador foi usado no rendimento | nada |
+| `⚠️ escriturador desconhecido` | ticker fora do `escriturador_memory.md` | preencher da B3 (ações/FIIs/FI-Infra/BDRs) e re-rodar |
+| `⚠️ NÃO` (escriturador) | rendimento veio só de corretora | buscar o informe do escriturador (pode faltar dividendo/JCP) |
 
 ## Important
 - **Not tax advice.** A divergence is a flag for review, not an automatic correction.
