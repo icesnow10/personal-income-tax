@@ -57,9 +57,10 @@ These markdown files drive the run. Edit them as new things appear — **no code
 | `rf_memory.md` | renda-fixa product renames: prior-year `Produto` name → current name (e.g. an issuer gaining "- EM LIQUIDACAO EXTRAJUDICIAL"), so `valor_<prior>` matches across the name change | taxpayer-specific |
 | `rf_value_memory.md` | Bens e Direitos value override per security código for **CRA / CRI / debêntures** (amortizing / accrued-interest papers B3 can't value): the broker informe Saldo, with source | taxpayer-specific |
 
-Keep your filled `ticker_memory.md` / `rf_memory.md` in the taxpayer's **`memory/`** folder and point
-`--memory-dir memory` at it. `mapping_memory.md` falls back to the bundled one if not present; the
-taxpayer-specific files are seeded empty there on first run.
+Keep your filled `ticker_memory.md` / `rf_memory.md` in the taxpayer's **`memory/`** folder.
+`--memory-dir` **defaults to `./memory`** (created if missing), so the memory files always live in
+`memory/` — never scattered in the taxpayer root. `mapping_memory.md` falls back to the bundled one if
+not present; the taxpayer-specific files are seeded empty in `memory/` on first run.
 
 ## Folder layout (taxpayer folder)
 

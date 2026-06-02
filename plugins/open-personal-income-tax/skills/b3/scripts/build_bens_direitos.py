@@ -16,7 +16,7 @@ Living memory (markdown tables — the single source of truth, pasted into aux_m
 Usage
   python build_bens_direitos.py MOV.xlsx POS.xlsx OUT.xlsx [--memory-dir DIR] [--year YYYY]
 
-  --memory-dir defaults to the current folder; each memory file missing there falls back to the
+  --memory-dir defaults to ./memory (created if missing); each memory file missing there falls back to the
   bundled copy for mapping_memory.md only (ticker/overrides default to empty, with a warning).
 
 Average price = ACQUISITION COST ÷ quantity (cost basis, what Bens e Direitos asks for), NOT
@@ -1044,13 +1044,14 @@ def write_workbook(out_path, mov, summary, blocks, classification, logic, proven
 def main():
     ap = argparse.ArgumentParser(description="Build IRPF Bens e Direitos workbook from B3 data + memory files.")
     ap.add_argument("movimentacao"); ap.add_argument("posicao"); ap.add_argument("saida")
-    ap.add_argument("--memory-dir", default=".", help="folder with the *_memory.md files (default: current)")
+    ap.add_argument("--memory-dir", default="memory", help="folder with the *_memory.md files (default: ./memory)")
     ap.add_argument("--year", type=int)
     ap.add_argument("--posicao-anterior", dest="posicao_anterior", default=None,
                     help="B3 Posição export at 31/12 of the PRIOR year — fills the valor_<prev> column "
                          "with authoritative renda-fixa values and corrects prior-year quantities")
     a = ap.parse_args()
     warn = []
+    Path(a.memory_dir).mkdir(parents=True, exist_ok=True)   # enforce the memory/ folder (seed files land here, never the cwd root)
     classification, logic, provento, renames, ren_rows, rf_renames, rf_rows, rf_value = load_memory(a.memory_dir, warn)
     peek = read_movimentacao(a.movimentacao)
     year = a.year or int(pd.to_datetime(peek["date"], dayfirst=True, errors="coerce").dt.year.max())
