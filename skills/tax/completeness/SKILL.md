@@ -1,14 +1,14 @@
 ---
 name: completeness
-description: Audit the generated b3_brazil_renda_variavel_avg_price_calculation.xlsx (b3 skill output) against the taxpayer's broker/bank statements (informe_de_rendimentos), ORGANIZED BY IRPF FICHA (Bens e Direitos, Rendimentos Isentos, Tributação Exclusiva), and write a single .md report with grupo/código, quantities, values, the source PDF per value, divergences, reclassifications and per-código sum reconciliation. b3_source is the source of truth for value/custo; the informe is the authority for classification. Use when the user wants a completeness/verification check of the IRPF — e.g. "compare os informes com o brazil_investments", "falta algo?", "/completeness".
+description: Audit the generated b3_brazil_variable_income_avg_price_calculation.xlsx (b3 skill output) against the taxpayer's broker/bank statements (informe_de_rendimentos), ORGANIZED BY IRPF FICHA (Bens e Direitos, Rendimentos Isentos, Tributação Exclusiva), and write a single .md report with grupo/código, quantities, values, the source PDF per value, divergences, reclassifications and per-código sum reconciliation. b3_source is the source of truth for value/custo; the informe is the authority for classification. Use when the user wants a completeness/verification check of the IRPF — e.g. "compare os informes com o brazil_investments", "falta algo?", "/completeness".
 ---
 
 # /completeness — auditoria por ficha do IRPF (b3_source × informe_de_rendimentos)
 
 Cross-check the two views and write a single **`.md`** report, organized by the **IRPF fichas**:
 
-1. **b3_source** — the `irpf_bens_e_direitos_renda_variavel` sheet of
-   `b3_brazil_renda_variavel_avg_price_calculation.xlsx` (the [b3](../renda_variavel/SKILL.md) output): **renda
+1. **b3_source** — the `irpf_bens_e_direitos_variable_income` sheet of
+   `b3_brazil_variable_income_avg_price_calculation.xlsx` (the [b3](../variable_income_brazil/SKILL.md) output): **renda
    variável only** (ações/FII/BDR — preço médio). The b3 workbook no longer carries rendimentos sheets
    (authority for rendimentos is the informe) nor renda-fixa value (declared from the informe).
 2. **informe_de_rendimentos** — `processed/informes.json`, the unified transcription that
@@ -29,7 +29,7 @@ must be declared by hand — this skill flags those so nothing is missed.
 
 ## Inputs the user provides
 Run from the **taxpayer folder** (layout `resources/` raw → `processed/` derived → root deliverables):
-- **`processed/b3_brazil_renda_variavel_avg_price_calculation.xlsx`** (the b3 skill output).
+- **`processed/b3_brazil_variable_income_avg_price_calculation.xlsx`** (the b3 skill output).
 - **`processed/informes.json`** — the unified transcription built by [/read](../read/SKILL.md). A single
   object with `bens` / `isentos` / `exclusiva` lists (schema in [../consolidate/REFERENCE.md](../consolidate/REFERENCE.md)):
   ```json
@@ -45,7 +45,7 @@ Run from the **taxpayer folder** (layout `resources/` raw → `processed/` deriv
 - **`memory/escriturador_memory.md`** — living memory `ticker → escriturador` (nome, CNPJ, `tag`, source),
   que liga o papel ao escriturador para a auditoria "o informe do escriturador foi usado?". **Gere
   automaticamente da B3** (sem prints, sem depender dos informes) com
-  `python scripts/fetch_escriturador.py --investimentos processed/b3_brazil_renda_variavel_avg_price_calculation.xlsx` — ele lê os
+  `python scripts/fetch_escriturador.py --investimentos processed/b3_brazil_variable_income_avg_price_calculation.xlsx` — ele lê os
   tickers/CNPJs do workbook do b3 (sempre presente) e busca o escriturador na API pública da B3 (campo
   `ifd` p/ FII/FI-Infra, `hasCommom` p/ ação/BDR — o mesmo de B3 > "Informações Gerais do Fundo >
   Escriturador"), preservando o `tag` já preenchido. Template/fallback manual em
@@ -54,8 +54,8 @@ Run from the **taxpayer folder** (layout `resources/` raw → `processed/` deriv
 ## Workflow
 1. **Build the transcription** with [/read](../read/SKILL.md) (or run it standalone). Parsing aid:
    `python scripts/completeness.py extract resources/` (image/encrypted PDFs yield nothing — read by hand).
-2. **Escriturador da B3** (sem prints/informes): `python scripts/fetch_escriturador.py --investimentos processed/b3_brazil_renda_variavel_avg_price_calculation.xlsx` → popula `memory/escriturador_memory.md` consultando a API da B3 para cada ação/FII/BDR do workbook.
-3. **Reconcile + fix**: `python scripts/completeness.py compare --investimentos processed/b3_brazil_renda_variavel_avg_price_calculation.xlsx --informes processed/informes.json`
+2. **Escriturador da B3** (sem prints/informes): `python scripts/fetch_escriturador.py --investimentos processed/b3_brazil_variable_income_avg_price_calculation.xlsx` → popula `memory/escriturador_memory.md` consultando a API da B3 para cada ação/FII/BDR do workbook.
+3. **Reconcile + fix**: `python scripts/completeness.py compare --investimentos processed/b3_brazil_variable_income_avg_price_calculation.xlsx --informes processed/informes.json`
    Writes `completeness_report.md` AND **audits/edits the deliverable `irpf_consolidated.xlsx` in place**
    (it's picked up automatically beside the report; override with `--consolidado`). Any value that drifts
    from its ficha authority (Bens → b3_source custo; rendimentos → informe) is **rewritten in the

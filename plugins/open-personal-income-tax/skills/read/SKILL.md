@@ -30,7 +30,7 @@ Um único objeto com três listas (uma por ficha). É o **mesmo** arquivo lido p
 ```
 
 - **`key`**: ticker / código do título / id estável (MAIÚSCULO) — o **mesmo** que o b3 usa para ativos B3.
-- **`b3`** (só em `bens`): `true` se é ativo custodiado na B3 (valor sai do `b3_brazil_renda_variavel_avg_price_calculation.xlsx`);
+- **`b3`** (só em `bens`): `true` se é ativo custodiado na B3 (valor sai do `b3_brazil_variable_income_avg_price_calculation.xlsx`);
   para esses, transcreva `quantidade` (e `valor_2025` do informe quando houver, p/ cross-check). `false`
   para o que só existe no informe (contas, RDB, moeda, exterior, JCP a receber) — aí o valor é declarado.
 - **`source`**: o **PDF** de onde veio o valor (ref curta, ex.: `btg_787`); junte com ` + ` quando o
@@ -51,7 +51,7 @@ Um único objeto com três listas (uma por ficha). É o **mesmo** arquivo lido p
 
 ## Importante
 - **Não é orientação fiscal.** Transcreva o que o informe diz; divergências são revisão, não correção.
-- **Valor de ativo B3** é cross-check aqui — a fonte da verdade do valor é o `b3_brazil_renda_variavel_avg_price_calculation.xlsx`
+- **Valor de ativo B3** é cross-check aqui — a fonte da verdade do valor é o `b3_brazil_variable_income_avg_price_calculation.xlsx`
   (custo com amortização abatida e custódias consolidadas), não o saldo de mercado do informe.
 - Mantenha **genérico** — `informes.json` fica na pasta do contribuinte; nunca comite tickers, CNPJs
   ou valores reais.

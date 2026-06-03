@@ -4,12 +4,12 @@
 
 | Field | Source of truth | Why |
 |---|---|---|
-| Bens e Direitos **valor** (B3 asset) | `b3_brazil_renda_variavel_avg_price_calculation.xlsx` (b3) | acquisition cost = preço médio × quantidade |
+| Bens e Direitos **valor** (B3 asset) | `b3_brazil_variable_income_avg_price_calculation.xlsx` (b3) | acquisition cost = preço médio × quantidade |
 | Bens e Direitos **grupo / código / CNPJ** | the **informe** (`informes.json`) | official classification (e.g. NUIF11 = 07/10) |
 | Bens e Direitos non-B3 item (value + codes) | the **informe** | not on the B3 at all |
 | Rendimentos (isentos / exclusiva) | the **informe** | the b3 income sheets are not used here |
 
-The script reads **only** the `IRPF_bens_e_direitos` sheet of `b3_brazil_renda_variavel_avg_price_calculation.xlsx`: per ticker it
+The script reads **only** the `IRPF_bens_e_direitos` sheet of `b3_brazil_variable_income_avg_price_calculation.xlsx`: per ticker it
 takes `valor_2024`, `valor_2025`, and parses **quantidade** (`N UNIDADES`) and **preço médio**
 (`CUSTO MEDIO: R$ x`) out of the discriminação for display. Everything else comes from `informes.json`.
 
@@ -37,7 +37,7 @@ B3, matching the b3 workbook's ticker); `source` is the PDF the value came from 
 ```
 
 ### Field notes
-- **`b3`** (bens): `true` → value is pulled from `b3_brazil_renda_variavel_avg_price_calculation.xlsx` by `key` (match is
+- **`b3`** (bens): `true` → value is pulled from `b3_brazil_variable_income_avg_price_calculation.xlsx` by `key` (match is
   UPPERCASE); the JSON's `quantidade`/`valor_2025` are for `/completeness` cross-check, ignored here.
   `false` → the item is taken verbatim, including `valor_2025`/`valor_2024`.
 - **`key`** of a B3 item must match the b3 workbook's `ticker` exactly (incl. `Tesouro Prefixado 2027`).

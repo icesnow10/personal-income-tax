@@ -4,7 +4,7 @@
 JSON honestly from the informes and let `/completeness` flag divergences (loop build → verify).
 
 ## Regras ao montar o `informes.json`
-- **Valor de ativo B3** sempre do `b3_brazil_renda_variavel_avg_price_calculation.xlsx` (custo já com amortização abatida e custódias
+- **Valor de ativo B3** sempre do `b3_brazil_variable_income_avg_price_calculation.xlsx` (custo já com amortização abatida e custódias
   consolidadas) — **nunca** o saldo do informe (que pode não abater amortização: NUIF11 informe 979,20 ×
   correto 961,20; ou ver só uma corretora: ALZR11 41,71 × ano todo 49,75). No JSON, para B3, `quantidade`
   e `valor_2025` (do informe) são só para o cross-check do `/completeness`.
@@ -25,7 +25,7 @@ JSON honestly from the informes and let `/completeness` flag divergences (loop b
 - Use o `extract` do skill `completeness` para listar linhas candidatas; PDFs imagem/cifrados
   (Bradesco, Itaú, etrade, Nomad) **não** saem no texto — transcreva à mão lendo o PDF com a ferramenta Read.
 - **BTG**: tabela limpa com `código CNPJ grupo cód saldo2024 saldo2025 … rendimento`. Para B3, use o
-  **grupo/cód** daqui (autoridade), mas lembre que o **valor** do B3 vem da `b3_brazil_renda_variavel_avg_price_calculation.xlsx`.
+  **grupo/cód** daqui (autoridade), mas lembre que o **valor** do B3 vem da `b3_brazil_variable_income_avg_price_calculation.xlsx`.
 - **Nubank/Wise Conta Global**: saldo em moeda estrangeira (EUR/USD em 31/12) → Bens e Direitos
   não-B3 (depósito no exterior, `localizacao` = código do país). A Wise BR (CNPJ 40.571.694/0001-31)
   costuma ter saldo 0.

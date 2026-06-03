@@ -88,7 +88,7 @@ IRPF "Bens e Direitos" (codes as of recent years — confirm in the program):
 | LCI / LCA / CRA / CRI / debênture (isentos) | 4 | 3 | declarado pelo **informe** (renda fixa não entra na ficha do b3) |
 
 > **Renda fixa NÃO é montada pelo b3.** O b3 só reconstrói preço médio de **renda variável**
-> (ações/FII/BDR) na `irpf_bens_e_direitos_renda_variavel`. Para CDB/CRA/CRI/debênture/Tesouro a B3 não
+> (ações/FII/BDR) na `irpf_bens_e_direitos_variable_income`. Para CDB/CRA/CRI/debênture/Tesouro a B3 não
 > tem o custo confiável (CRA/CRI/debênture embutem juros decorridos que ela não separa) — o valor de
 > Bens e Direitos vem do **informe da corretora**, declarado no `informes.json` (`b3:false`).
 

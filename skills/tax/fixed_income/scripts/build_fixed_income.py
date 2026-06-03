@@ -17,8 +17,8 @@ Bank products NOT in the B3 position (RDB, conta, come-cotas, exterior) are NOT 
 stay with /consolidate. The quantity check (position B3 × informe) only WARNS; it never blocks.
 
 Usage:
-  python build_renda_fixa.py --posicao resources/POS.xlsx --informes processed/informes.json \
-      --out processed/renda_fixa.xlsx
+  python build_fixed_income.py --posicao resources/POS.xlsx --informes processed/informes.json \
+      --out processed/fixed_income.xlsx
 
 Requires: pandas, openpyxl
 """
@@ -115,7 +115,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--posicao", required=True, help="B3 Posição export (for the RF position + validation)")
     ap.add_argument("--informes", required=True, help="processed/informes.json")
-    ap.add_argument("--out", default="processed/renda_fixa.xlsx")
+    ap.add_argument("--out", default="processed/fixed_income.xlsx")
     a = ap.parse_args()
 
     pos = read_rf_position(a.posicao)

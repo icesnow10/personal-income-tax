@@ -1,6 +1,6 @@
 ---
-name: renda_variavel
-description: Reconstruct the average acquisition cost (preço médio) of B3 renda variável (ações, FIIs, BDRs) from the Movimentação history and build the year-end Bens e Direitos rows — renda variável ONLY. Outputs b3_brazil_renda_variavel_avg_price_calculation.xlsx. Renda fixa is NOT handled here (see the renda_fixa skill). Use when the user has B3 "Movimentação"/"Posição" exports, or mentions preço médio, custo de aquisição, bens e direitos de ações/FII/BDR.
+name: variable_income_brazil
+description: Reconstruct the average acquisition cost (preço médio) of B3 renda variável (ações, FIIs, BDRs) from the Movimentação history and build the year-end Bens e Direitos rows — renda variável ONLY. Outputs b3_brazil_variable_income_avg_price_calculation.xlsx. Renda fixa is NOT handled here (see the fixed_income skill). Use when the user has B3 "Movimentação"/"Posição" exports, or mentions preço médio, custo de aquisição, bens e direitos de ações/FII/BDR.
 ---
 
 # B3 → IRPF "Bens e Direitos"
@@ -70,7 +70,7 @@ The skills share a 3-tier layout, run from the taxpayer's folder:
 |---|---|
 | `resources/` | **raw** inputs: the B3 `Movimentação`/`Posição` exports + the informe PDFs |
 | `memory/` | the memory files (`ticker_memory.md`, `rf_memory.md`, `rf_value_memory.md`, `mapping_memory.md`) |
-| `processed/` | **derived** artifacts: `b3_brazil_renda_variavel_avg_price_calculation.xlsx` (this skill's output) + the transcribed JSONs |
+| `processed/` | **derived** artifacts: `b3_brazil_variable_income_avg_price_calculation.xlsx` (this skill's output) + the transcribed JSONs |
 | (root) | the deliverables: `irpf_consolidated.xlsx` + `completeness_report.md` |
 
 ## Workflow
@@ -79,7 +79,7 @@ The skills share a 3-tier layout, run from the taxpayer's folder:
 2. **Update `ticker_memory.md`** with this taxpayer's renames (mergers, BDR/PN→ON), each with a
    source link. Copy the bundled template into your working folder and edit there.
 3. **Run** from the taxpayer folder (see "Folder layout" below):
-   `python scripts/build_bens_direitos.py resources/MOV.xlsx resources/POS.xlsx processed/b3_brazil_renda_variavel_avg_price_calculation.xlsx --memory-dir memory --year 2025`
+   `python scripts/build_bens_direitos.py resources/MOV.xlsx resources/POS.xlsx processed/b3_brazil_variable_income_avg_price_calculation.xlsx --memory-dir memory --year 2025`
    (the script warns about any movement type missing from `mapping_memory.md` — add a row there).
    Optionally pass `--posicao-anterior resources/POS_PRIOR.xlsx` (the B3 Posição at 31/12 of the **prior**
    year): it fills `valor_<prev>` for renda fixa with the authoritative applied value and corrects
@@ -92,7 +92,7 @@ The skills share a 3-tier layout, run from the taxpayer's folder:
    restructure, a missing rename). Investigate and adjust the IRPF row by hand — the engine
    never auto-overrides the B3 data.
 
-## Output — `b3_brazil_renda_variavel_avg_price_calculation.xlsx`
+## Output — `b3_brazil_variable_income_avg_price_calculation.xlsx`
 
 Scope: **renda variável** (ações / FII / BDR) — preço médio reconstruction. **Renda fixa**
 (CDB / CRA / CRI / debênture / Tesouro) does NOT get avg_price / custo here — its Bens e Direitos
@@ -108,7 +108,7 @@ value comes from the broker informe (declared via `informes.json`). Sheet order:
 | `position_previous` | the prior-year position as-exported + reconstructed avg_price_prev / custo_total_prev (RV only; renda fixa sem custo) — only with `--posicao-anterior` |
 | `reconciliation` | year-end position qty vs movement qty per ticker (RV only) |
 | `reconciliation_previous` | same at 31/12 of the prior year — only with `--posicao-anterior` |
-| `irpf_bens_e_direitos_renda_variavel` | one row per **renda variável** ticker: grupo / codigo / localizacao / cnpj / discriminacao / valor_(prior) / valor_(current) — type-ready |
+| `irpf_bens_e_direitos_variable_income` | one row per **renda variável** ticker: grupo / codigo / localizacao / cnpj / discriminacao / valor_(prior) / valor_(current) — type-ready |
 
 The b3 workbook no longer builds `IRPF_rendimentos_isentos` / `IRPF_rendimentos_exclusivos` (the
 **informe** is the authority on dividendos/JCP/juros) nor a renda-fixa value sheet.

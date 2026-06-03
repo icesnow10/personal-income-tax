@@ -4,7 +4,7 @@
 
 | Source | What it is | How it's read |
 |---|---|---|
-| **b3_source** | `irpf_bens_e_direitos_renda_variavel` sheet of `b3_brazil_renda_variavel_avg_price_calculation.xlsx` (the **b3** skill output — renda variável only) | `compare` reads it directly |
+| **b3_source** | `irpf_bens_e_direitos_variable_income` sheet of `b3_brazil_variable_income_avg_price_calculation.xlsx` (the **b3** skill output — renda variável only) | `compare` reads it directly |
 | **informe_de_rendimentos** | broker/bank PDFs (BTG, NU, Clear, Wise, BB, foreign brokers) | agent via [/read](../read/SKILL.md) → `informes.json` |
 
 **Source of truth is per ficha.** In **Bens e Direitos**, on a VALUE divergence the b3_source figure

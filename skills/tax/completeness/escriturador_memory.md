@@ -7,7 +7,7 @@ por ação/FII em Bens e Direitos, conferir se **alguma fonte do rendimento é o
 (o `tag` aparece no `source` do rendimento no `informes.json`).
 
 > **Gere este arquivo automaticamente da B3** (recomendado — sem prints, sem depender dos informes):
-> `python scripts/fetch_escriturador.py --investimentos processed/b3_brazil_renda_variavel_avg_price_calculation.xlsx`
+> `python scripts/fetch_escriturador.py --investimentos processed/b3_brazil_variable_income_avg_price_calculation.xlsx`
 > Ele lê cada ação/FII/BDR do workbook do b3 e consulta a API pública da B3 (campo `ifd` p/ FII/FI-Infra,
 > `hasCommom` p/ ação/BDR). O resto deste arquivo é o **formato + fallback manual**.
 

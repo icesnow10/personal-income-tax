@@ -1,9 +1,9 @@
 ---
-name: renda_fixa
-description: Build the IRPF renda-fixa slice (CDB, CRA, CRI, debênture, LCI, LCA, Tesouro) from the informes transcription plus a B3 position validation. Reads processed/informes.json (the RF items — value from the broker informe) and the B3 Posição export (to validate that every renda-fixa security held on the B3 is covered by an informe), and writes an Excel with position + bens_e_direitos + isentos (cód 12) + exclusiva (cód 06), renda fixa only. Use when the user wants to build the renda-fixa part of the IRPF, validate RF positions against the informes, or mentions renda fixa, CDB/CRA/CRI/debênture/Tesouro, /renda_fixa.
+name: fixed_income
+description: Build the IRPF renda-fixa slice (CDB, CRA, CRI, debênture, LCI, LCA, Tesouro) from the informes transcription plus a B3 position validation. Reads processed/informes.json (the RF items — value from the broker informe) and the B3 Posição export (to validate that every renda-fixa security held on the B3 is covered by an informe), and writes an Excel with position + bens_e_direitos + isentos (cód 12) + exclusiva (cód 06), renda fixa only. Use when the user wants to build the renda-fixa part of the IRPF, validate RF positions against the informes, or mentions renda fixa, CDB/CRA/CRI/debênture/Tesouro, /fixed_income.
 ---
 
-# /renda_fixa — a fatia de renda fixa do IRPF (a partir dos informes + validação na B3)
+# /fixed_income — a fatia de renda fixa do IRPF (a partir dos informes + validação na B3)
 
 Renda fixa da B3 (**CDB / CRA / CRI / debênture / LCI / LCA / Tesouro**) **não tem preço médio
 reconstruível** — o custo embute juros decorridos que a B3 não separa e o principal amortiza. O valor
@@ -16,7 +16,7 @@ só para **validar** que todo título de RF na custódia tem um item no informe.
   rendimentos de RF (a autoridade do valor é o informe).
 - **B3 Posição** (`resources/POS.xlsx`) — só para listar os títulos de RF e suas quantidades (validação).
 
-## Saída — `processed/renda_fixa.xlsx`
+## Saída — `processed/fixed_income.xlsx`
 | Sheet | Conteúdo |
 |---|---|
 | `position` | os títulos de RF da Posição B3 (código, produto, quantidade, corretora) + coluna `validacao` = se há item no informe |
@@ -31,7 +31,7 @@ RDB, conta de pagamento, fundo come-cotas, moeda/exterior (esses não estão na 
 
 ## Workflow
 1. Rode o [/read](../read/SKILL.md) primeiro (gera `informes.json`).
-2. `python scripts/build_renda_fixa.py --posicao resources/POS.xlsx --informes processed/informes.json --out processed/renda_fixa.xlsx`
+2. `python scripts/build_fixed_income.py --posicao resources/POS.xlsx --informes processed/informes.json --out processed/fixed_income.xlsx`
 3. **Leia a validação**: cada título da Posição B3 **sem item no informe** é sinalizado (`⚠️ FALTA no
    informe`) — confira o informe da corretora e adicione no `informes.json` (volta ao /read). A validação
    **só sinaliza**, não trava o pipeline.
@@ -42,4 +42,4 @@ RDB, conta de pagamento, fundo come-cotas, moeda/exterior (esses não estão na 
 - **Não é orientação fiscal.** O valor de RF vem do informe; divergência de quantidade é sinal de revisão.
 - **CRA/CRI/debênture** embutem juros decorridos — por isso o valor **tem** que vir do informe, nunca de
   uma reconstrução. CDB/LCI/LCA/Tesouro idem (valor aplicado do informe).
-- Mantenha **genérico** — nunca comite o `informes.json`/`renda_fixa.xlsx` de um contribuinte.
+- Mantenha **genérico** — nunca comite o `informes.json`/`fixed_income.xlsx` de um contribuinte.
