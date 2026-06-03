@@ -1,5 +1,5 @@
 ---
-name: variable_income_brazil
+name: vi_br
 description: Reconstruct the average acquisition cost (preço médio) of B3 renda variável (ações, FIIs, BDRs) from the Movimentação history and build the year-end Bens e Direitos rows — renda variável ONLY. Outputs b3_brazil_variable_income_avg_price_calculation.xlsx. Renda fixa is NOT handled here (see the fixed_income skill). Use when the user has B3 "Movimentação"/"Posição" exports, or mentions preço médio, custo de aquisição, bens e direitos de ações/FII/BDR.
 ---
 

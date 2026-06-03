@@ -1,6 +1,6 @@
 ---
 name: irpf
-description: Orchestrate the full Brazilian IRPF investments pipeline end to end — read → variable_income (brazil + international) → fixed_income → consolidate → completeness. /read transcribes every informe into informes.json; variable_income_brazil reconstructs preço médio of B3 ações/FII/BDR; variable_income_international builds foreign stocks/ETFs from the informes; fixed_income builds the RF slice (bens/isentos/exclusiva) + a B3 position validation; consolidate merges everything into irpf_consolidated.xlsx; completeness audits it. Use when the user wants to "fazer o IRPF dos investimentos", run the whole pipeline, montar a declaração de investimentos do zero, or mentions /irpf.
+description: Orchestrate the full Brazilian IRPF investments pipeline end to end — read → variable_income (brazil + international) → fixed_income → consolidate → completeness. /read transcribes every informe into informes.json; vi_br reconstructs preço médio of B3 ações/FII/BDR; vi_international builds foreign stocks/ETFs from the informes; fixed_income builds the RF slice (bens/isentos/exclusiva) + a B3 position validation; consolidate merges everything into irpf_consolidated.xlsx; completeness audits it. Use when the user wants to "fazer o IRPF dos investimentos", run the whole pipeline, montar a declaração de investimentos do zero, or mentions /irpf.
 ---
 
 # /irpf — pipeline completo dos investimentos no IRPF
@@ -13,8 +13,8 @@ resources/ (informes PDFs + B3 exports)
   [1] read ─────────────────────────►  processed/informes.json   (transcrição unificada de TODO o resources/)
         │
   [2] variable_income                  (renda variável — Brasil + exterior):
-        ├─ variable_income_brazil ───►  b3_brazil_variable_income_avg_price_calculation.xlsx  (preço médio ações/FII/BDR da B3)
-        └─ variable_income_international ► variable_income_international.xlsx                  (ações/ETF no exterior, do informe)
+        ├─ vi_br ────────────────────►  b3_brazil_variable_income_avg_price_calculation.xlsx  (preço médio ações/FII/BDR da B3)
+        └─ vi_international ──────────► variable_income_international.xlsx                  (ações/ETF no exterior, do informe)
         │
   [3] fixed_income ─────────────────►  processed/fixed_income.xlsx (CDB/CRA/CRI/deb/Tesouro: bens+isentos+exclusiva, do informe + validação Posição B3)
         │
@@ -24,9 +24,9 @@ resources/ (informes PDFs + B3 exports)
 ```
 
 Skills: [read](../read/SKILL.md), [variable_income](../variable_income/SKILL.md) (→
-[brazil](../variable_income_brazil/SKILL.md) + [international](../variable_income_international/SKILL.md)),
+[brazil](../vi_br/SKILL.md) + [international](../vi_international/SKILL.md)),
 [fixed_income](../fixed_income/SKILL.md), [consolidate](../consolidate/SKILL.md),
-[completeness](../completeness/SKILL.md). O **mesmo** `processed/informes.json` alimenta variable_income_international,
+[completeness](../completeness/SKILL.md). O **mesmo** `processed/informes.json` alimenta vi_international,
 fixed_income, consolidate e completeness — uma transcrição só.
 
 ## Pasta do contribuinte (layout padrão)
@@ -55,14 +55,14 @@ imagem/cifrados). Auxílio: `python ../completeness/scripts/completeness.py extr
 ### 2. variable_income → renda variável (Brasil + exterior)
 **(a) Brasil** — atualize `memory/ticker_memory.md` (renames/incorporações), então:
 ```
-python ../variable_income_brazil/scripts/build_bens_direitos.py resources/MOV.xlsx resources/POS.xlsx \
+python ../vi_br/scripts/build_bens_direitos.py resources/MOV.xlsx resources/POS.xlsx \
     processed/b3_brazil_variable_income_avg_price_calculation.xlsx --memory-dir memory --year YYYY \
     [--posicao-anterior resources/POS_PRIOR.xlsx]
 ```
 **Leia o AUDIT** (qtd movimentação × posição): cada divergência é ação corporativa a tratar à mão.
 **(b) Internacional** — ações/ETF no exterior (só do informe, não estão na B3):
 ```
-python ../variable_income_international/scripts/build_international.py \
+python ../vi_international/scripts/build_international.py \
     --informes processed/informes.json --out processed/variable_income_international.xlsx
 ```
 
@@ -102,8 +102,8 @@ volta para a etapa certa. Repita até fechar.
 | Arquivo | Skill | Conteúdo |
 |---|---|---|
 | `processed/informes.json` | read | transcrição unificada dos informes |
-| `processed/b3_brazil_variable_income_avg_price_calculation.xlsx` | variable_income_brazil | preço médio de ações/FII/BDR (B3) |
-| `processed/variable_income_international.xlsx` | variable_income_international | ações/ETF no exterior (do informe) |
+| `processed/b3_brazil_variable_income_avg_price_calculation.xlsx` | vi_br | preço médio de ações/FII/BDR (B3) |
+| `processed/variable_income_international.xlsx` | vi_international | ações/ETF no exterior (do informe) |
 | `processed/fixed_income.xlsx` | fixed_income | RF: position + bens + isentos + exclusiva (valor do informe) |
 | `irpf_consolidated.xlsx` | consolidate | as 3 fichas finais, prontas p/ digitar |
 | `completeness_report.md` | completeness | auditoria por ficha, divergências e action items |

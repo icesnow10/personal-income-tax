@@ -240,7 +240,7 @@ def main():
     ap.add_argument("--investimentos")
     ap.add_argument("--json")
     ap.add_argument("--renda-fixa", dest="renda_fixa", help="renda_fixa workbook (RF bens/isentos/exclusiva)")
-    ap.add_argument("--internacional", dest="internacional", help="variable_income_international workbook (foreign equity/ETF bens)")
+    ap.add_argument("--internacional", dest="internacional", help="vi_international workbook (foreign equity/ETF bens)")
     ap.add_argument("--outdir", default=".")
     ap.add_argument("--template", metavar="PATH", help="write an empty unified informes.json skeleton and exit")
     a = ap.parse_args()

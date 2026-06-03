@@ -1,9 +1,9 @@
 ---
-name: variable_income_international
-description: Build the FOREIGN variable-income slice of the IRPF (ações/ETFs no exterior, held at Avenue, Nomad, Interactive Brokers, etrade, …) from the informes transcription. These are NOT on the B3, so there is no preço médio and no Posição — the value comes from the broker informe. Reads processed/informes.json (the foreign equity/ETF items, b3:false + localização ≠ 105) and writes bens_e_direitos (+ a flagged rendimentos_exterior sheet, since foreign income goes in OTHER fichas). Use when the user has foreign stocks/ETFs, or mentions ações/ETF no exterior, Avenue/Nomad/Interactive Brokers, renda variável internacional, /variable_income_international.
+name: vi_international
+description: Build the FOREIGN variable-income slice of the IRPF (ações/ETFs no exterior, held at Avenue, Nomad, Interactive Brokers, etrade, …) from the informes transcription. These are NOT on the B3, so there is no preço médio and no Posição — the value comes from the broker informe. Reads processed/informes.json (the foreign equity/ETF items, b3:false + localização ≠ 105) and writes bens_e_direitos (+ a flagged rendimentos_exterior sheet, since foreign income goes in OTHER fichas). Use when the user has foreign stocks/ETFs, or mentions ações/ETF no exterior, Avenue/Nomad/Interactive Brokers, renda variável internacional, /vi_international.
 ---
 
-# /variable_income_international — renda variável no exterior (a partir dos informes)
+# /vi_international — renda variável no exterior (a partir dos informes)
 
 Ações/ETFs **no exterior** (Avenue, Nomad, Interactive Brokers, etrade, …) **não estão na B3** — não
 há `Movimentação`/`Posição` nem preço médio a reconstruir. O valor de Bens e Direitos vem do **informe

@@ -8,7 +8,7 @@ description: Audit the generated b3_brazil_variable_income_avg_price_calculation
 Cross-check the two views and write a single **`.md`** report, organized by the **IRPF fichas**:
 
 1. **b3_source** — the `irpf_bens_e_direitos_variable_income` sheet of
-   `b3_brazil_variable_income_avg_price_calculation.xlsx` (the [b3](../variable_income_brazil/SKILL.md) output): **renda
+   `b3_brazil_variable_income_avg_price_calculation.xlsx` (the [b3](../vi_br/SKILL.md) output): **renda
    variável only** (ações/FII/BDR — preço médio). The b3 workbook no longer carries rendimentos sheets
    (authority for rendimentos is the informe) nor renda-fixa value (declared from the informe).
 2. **informe_de_rendimentos** — `processed/informes.json`, the unified transcription that

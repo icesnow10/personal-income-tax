@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""variable_income_international — the FOREIGN variable-income slice of the IRPF, from the informes.
+"""vi_international — the FOREIGN variable-income slice of the IRPF, from the informes.
 
 Foreign stocks / ETFs (held at Avenue, Nomad, Interactive Brokers, etrade, …) are NOT on the B3, so
 there is no preço médio to reconstruct and no Posição to validate against — the value comes straight
