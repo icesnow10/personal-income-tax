@@ -100,18 +100,19 @@ value comes from the broker informe (declared via `informes.json`). Sheet order:
 
 | Sheet | Purpose |
 |---|---|
-| `movements_enriched` | every movement + ticker, action, quantity_accumulated, avg_price, custo_acumulado, and an **`obs`** column ("renda fixa — sem preço médio") |
+| `movements_enriched` | every movement + ticker, action, quantity_accumulated, avg_price, custo_acumulado, and an **`obs`** column. **Renda fixa: `avg_price`/`custo_acumulado` em branco** ("renda fixa — sem preço médio") |
 | `aux_mapping` | the two lookup tables that drove it (movement→action+provento_type, renames) |
 | `avg_price_summary` | per ticker, end-of-year accumulated_quantity / avg_price / total for each year |
-| `income` | per ticker, (interest, yield, total) for each year — auditing only (rendimentos are declared from the informe, not from here) |
-| `position` | year-end blocks merged + avg_price, custo_total, tipo, discriminação. **Renda fixa: no custo_total, no discriminação** |
-| `position_previous` | the prior-year position as-exported + reconstructed avg_price_prev / custo_total_prev (RV only; renda fixa sem custo) — only with `--posicao-anterior` |
+| `position` | year-end blocks merged + avg_price, custo_total, tipo, discriminação — **renda variável SÓ** (ações/FII/BDR). **Tesouro/renda fixa NÃO entra** (sem preço médio; valor vem do informe) |
+| `position_previous` | the prior-year position as-exported + reconstructed avg_price_prev / custo_total_prev — **renda variável só** (renda fixa fora) — only with `--posicao-anterior` |
 | `reconciliation` | year-end position qty vs movement qty per ticker (RV only) |
 | `reconciliation_previous` | same at 31/12 of the prior year — only with `--posicao-anterior` |
 | `irpf_bens_e_direitos_variable_income` | one row per **renda variável** ticker: grupo / codigo / localizacao / cnpj / discriminacao / valor_(prior) / valor_(current) — type-ready |
 
 The b3 workbook no longer builds `IRPF_rendimentos_isentos` / `IRPF_rendimentos_exclusivos` (the
-**informe** is the authority on dividendos/JCP/juros) nor a renda-fixa value sheet.
+**informe** is the authority on dividendos/JCP/juros), nor an `income` sheet, nor a renda-fixa value
+sheet. **Renda fixa never gets an `avg_price` anywhere, and is excluded from `position`** — its Bens e
+Direitos value comes from the broker informe (declared via `informes.json`).
 
 ## Important
 

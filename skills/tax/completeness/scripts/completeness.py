@@ -63,6 +63,73 @@ def qfmt(q):
     if q is None: return ""
     return str(int(q)) if float(q) == int(q) else f"{q}"
 
+# --- renda fixa: validação Posição B3 × informe (portada do antigo /fixed_income) ---
+RF_PREFIX = ("CDB", "RDB", "CRA", "CRI", "CDCA", "DEB", "LCI", "LCA", "LF", "LIG", "LH", "LCD")
+
+def _getcol(d, *names):
+    for n in names:
+        for k in d:
+            if norm(k).lower() == norm(n).lower():
+                return d[k]
+    return None
+
+def read_rf_position(path):
+    """B3 Posição renda-fixa / Tesouro sheets → [{codigo, produto, quantidade, corretora}]."""
+    if not path or not os.path.exists(path):
+        return []
+    import pandas as pd
+    xl = pd.ExcelFile(path)
+    out = []
+    for sh in xl.sheet_names:
+        n = norm(sh).lower()
+        if not ("tesouro" in n or "renda fixa" in n or "renda_fixa" in n):
+            continue
+        df = pd.read_excel(path, sheet_name=sh)
+        def _txt(v):                                       # NaN/None → "" (planilhas trazem linhas em branco)
+            return "" if v is None or (isinstance(v, float) and pd.isna(v)) else str(v).strip()
+        for _, r in df.iterrows():
+            d = {c: r[c] for c in df.columns}
+            cod = _txt(_getcol(d, "Código", "Codigo", "Código do Ativo"))
+            prod = _txt(_getcol(d, "Produto"))
+            qty = _getcol(d, "Quantidade")
+            inst = _txt(_getcol(d, "Instituição", "Instituicao"))
+            if not prod and not cod:                       # linha em branco / subtotal → pula
+                continue
+            qok = isinstance(qty, (int, float)) and not pd.isna(qty)
+            out.append({"codigo": cod, "produto": prod,
+                        "quantidade": (float(qty) if qok else None),
+                        "corretora": inst})
+    return out
+
+def rf_position_check(posicao_path, informes_path):
+    """Every renda-fixa security in the B3 Posição must have a matching bens item in informes.json
+    (the value is declared from the informe). A missing one = incomplete /read transcription."""
+    pos = read_rf_position(posicao_path)
+    if not pos:
+        return []
+    data = json.loads(Path(informes_path).read_text(encoding="utf-8"))
+    bens = [it for it in (data.get("bens") or [])
+            if (it.get("grupo") == 4) and not norm(it.get("key")).upper().startswith(("NU-RDB", "NU-CONTA", "NU-RESERVA"))]
+    owned = {norm(it.get("key")).upper(): norm(it.get("descr") or it.get("discriminacao") or "").upper() for it in bens}
+    rows = []
+    for p in pos:
+        cod = norm(p["codigo"]).upper(); prod = norm(p["produto"]).upper()
+        covered = any(k == cod or k == prod or (cod and cod in k) or (k and k in prod) for k in owned) \
+                  or any(cod and cod in dsc for dsc in owned.values())
+        rows.append({**p, "covered": covered})
+    return rows
+
+def foreign_keys(informes_path):
+    """Keys of foreign Bens e Direitos (b3:false, localizacao != 105) — to flag foreign income that
+    landed in isentos/exclusiva (it belongs in OTHER fichas: carnê-leão / GCAP)."""
+    data = json.loads(Path(informes_path).read_text(encoding="utf-8"))
+    out = set()
+    for it in (data.get("bens") or []):
+        loc = norm(it.get("localizacao"))
+        if not it.get("b3") and loc not in ("", "105", "0", "None"):
+            out.add(norm(it.get("key")).upper())
+    return out
+
 def to_num(s):
     if s is None: return None
     if isinstance(s, (int, float)):
@@ -490,6 +557,44 @@ def compare(args):
             bump("reclassificação (código b3 × informe)")
         L.append("")
 
+    # ---------------- renda fixa: Posição B3 × informe (validação migrada do /fixed_income) ----------------
+    extra_acts = []
+    if getattr(args, "posicao", None):
+        rfp = rf_position_check(args.posicao, args.informes)
+        if rfp:
+            L += ["## Renda fixa — Posição B3 × informe\n",
+                  "_Todo título de renda fixa custodiado na B3 deve ter um item correspondente no "
+                  "`informes.json` (o valor de Bens e Direitos vem do informe). Faltando = transcrição "
+                  "incompleta no /read — confira o informe da corretora e volte ao /read._\n",
+                  "| código | produto | qtd | corretora | status |", "|---|---|--:|---|---|"]
+            for r in rfp:
+                ok = r["covered"]
+                st = "OK (no informe)" if ok else "⚠️ FALTA no informe — confira o informe da corretora"
+                L.append(f"| {r['codigo']} | {r['produto']} | {qfmt(r['quantidade'])} | {r['corretora']} | {st} |")
+                bump("renda fixa coberta pelo informe" if ok else "renda fixa FALTA no informe")
+                if not ok:
+                    extra_acts.append(f"- [ ] **`{r['codigo'] or r['produto']}`** (renda fixa, qtd {qfmt(r['quantidade'])}): "
+                                      f"na Posição B3 mas sem item no `informes.json` — buscar o informe e transcrever (/read).")
+            L.append("")
+
+    # ---------------- exterior: rendimento estrangeiro caiu em isento/exclusiva? ----------------
+    fk = foreign_keys(args.informes)
+    if fk:
+        flagged = [(ficha, c, tk, (rec or {}).get("valor")) for ficha in ("isentos", "exclusiva")
+                   for (c, tk), rec in inf[ficha].items() if norm(tk).upper() in fk]
+        if flagged:
+            L += ["## Exterior — rendimento em ficha errada?\n",
+                  "_Estes rendimentos têm `key` de um bem no EXTERIOR (localização ≠ 105). Dividendo/ganho "
+                  "no exterior é **tributável** (carnê-leão / GCAP / Tributáveis Recebidos do Exterior), "
+                  "**não** entra em isento/exclusiva. Confira a ficha._\n",
+                  "| ficha (atual) | código | ativo | valor | ação |", "|---|---|---|--:|---|"]
+            for (ficha, c, tk, v) in flagged:
+                L.append(f"| {ficha} | {c} | {tk} | {brl(v)} | mover p/ ficha de exterior (tributável) |")
+                bump("rendimento de exterior em ficha errada")
+                extra_acts.append(f"- [ ] **`{tk}`** (rendimento {brl(v)}): é do exterior — declarar em carnê-leão/GCAP/"
+                                  f"Tributáveis do Exterior, não em {ficha}.")
+            L.append("")
+
     # ---------------- auditar + editar o irpf_consolidated.xlsx ----------------
     cons = args.consolidado or os.path.join(os.path.dirname(os.path.abspath(md)) or ".", "irpf_consolidated.xlsx")
     adj = []
@@ -534,7 +639,7 @@ def compare(args):
     for (tk, v, fb, cb, fi, ci) in recl:
         acts.append(f"- [ ] **`{tk}`** (rendimento {brl(v)}): reclassificação — b3 {fb}/cód {cb:02d} × "
                     f"informe {fi}/cód {ci:02d}; declarar no código do informe.")
-    acts += esc_acts
+    acts += esc_acts + extra_acts
     if not acts: acts = ["- [x] Sem pendências estruturais (confira as divergências de valor nas tabelas)."]
     L += acts
 
@@ -557,6 +662,7 @@ def main():
     pc = sub.add_parser("compare")
     pc.add_argument("--investimentos", required=True, help="b3_source: brazil_investments.xlsx")
     pc.add_argument("--informes", required=True, help="informe_de_rendimentos: informes.json (com 'ficha' por item)")
+    pc.add_argument("--posicao", help="B3 Posição export — valida que todo título de RF na B3 tem item no informe")
     pc.add_argument("--out", default="completeness_report.md")
     pc.add_argument("--consolidado", help="irpf_consolidated.xlsx a auditar/editar (default: ao lado do --out)")
     pc.add_argument("--escriturador-memory", help="memory/escriturador_memory.md (ticker -> escriturador; default: memory/escriturador_memory.md)")

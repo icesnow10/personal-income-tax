@@ -21,8 +21,9 @@ Um único objeto com três listas (uma por ficha). É o **mesmo** arquivo lido p
 ```json
 {
   "bens": [
-    {"key":"NUIF11","b3":true,"grupo":7,"codigo":10,"cnpj":"40963403000150","quantidade":9,"valor_2025":979.20,"source":"btg_FD0257"},
-    {"key":"NU-RDB","b3":false,"grupo":4,"codigo":2,"localizacao":105,"descr":"RDB Nu Financeira","cnpj":"30680829000143","valor_2025":88547.65,"valor_2024":43086.29,"source":"nubank_informe"}
+    {"key":"NUIF11","b3":true,"grupo":7,"codigo":10,"cnpj":"40963403000150","nome":"FI-Infra exemplo","quantidade":10,"valor_2025":1000.00,"discriminacao":"10 COTAS DO FI-INFRA NUIF11 (exemplo)","source":"corretora_informe"},
+    {"key":"NU-RDB","b3":false,"grupo":4,"codigo":2,"localizacao":105,"nome":"RDB Nu Financeira","descr":"RDB Nu Financeira","cnpj":"30680829000143","valor_2025":50000.00,"valor_2024":40000.00,"discriminacao":"SALDO EM RDB (exemplo)","source":"nubank_informe"},
+    {"key":"AAPL","b3":false,"grupo":3,"codigo":1,"localizacao":249,"nome":"Apple Inc","descr":"10 ações AAPL na Avenue (EUA)","cnpj":"","valor_2025":12345.67,"valor_2024":0.0,"source":"avenue_informe"}
   ],
   "isentos":   [{"codigo":9,"key":"BBSE3","beneficiario":"Titular","cnpj":"...","fonte_pagadora":"...","descr":"Dividendos BBSE3","valor_2025":842.87,"source":"btg_787 + nubank_informe"}],
   "exclusiva": [{"codigo":10,"key":"VALE3","beneficiario":"Titular","cnpj":"...","descr":"JCP VALE3","valor_2025":41.07,"source":"btg_787 + nubank_informe"}]
@@ -32,7 +33,17 @@ Um único objeto com três listas (uma por ficha). É o **mesmo** arquivo lido p
 - **`key`**: ticker / código do título / id estável (MAIÚSCULO) — o **mesmo** que o b3 usa para ativos B3.
 - **`b3`** (só em `bens`): `true` se é ativo custodiado na B3 (valor sai do `b3_brazil_variable_income_avg_price_calculation.xlsx`);
   para esses, transcreva `quantidade` (e `valor_2025` do informe quando houver, p/ cross-check). `false`
-  para o que só existe no informe (contas, RDB, moeda, exterior, JCP a receber) — aí o valor é declarado.
+  para o que só existe no informe (contas, RDB, moeda, **exterior**, JCP a receber) — aí o valor é declarado.
+- **Transcreva TODOS os campos que o informe traz** por item, em **todos os grupos** (Bens e Direitos,
+  Dividendos, Rendimentos Isentos e Não Tributáveis, JCP/Tributação Exclusiva): **`grupo`, `codigo`,
+  `cnpj`, `nome`** (nome do ativo/empresa/fundo), **`localizacao`** (105 Brasil; ≠105 exterior, ex.: 249
+  EUA), **`ticker`/`key`** e **`discriminacao`** — o texto de *"Discriminação sugerida para a Declaração
+  de Bens e Direitos"* que BTG e outras corretoras já entregam pronto (transcreva **verbatim** quando
+  existir; o /consolidate prefere essa discriminação à `descr`).
+- **Exterior**: posições no exterior que o informe listar (ex.: o BTG/ a corretora estrangeira traz
+  ações/ETF com `localizacao` 249/EUA) **entram no `informes.json`** como `b3:false` com a sua
+  `localizacao` — não as deixe de fora (furo comum: o informe as lista e a transcrição esquece). Renda variável no exterior vai em
+  Bens e Direitos; o **rendimento** dela é tributável (carnê-leão/GCAP), não isento/exclusiva.
 - **`source`**: o **PDF** de onde veio o valor (ref curta, ex.: `btg_787`); junte com ` + ` quando o
   valor soma mais de um PDF (regime de caixa entre corretoras). Vira a coluna de rastreio.
 

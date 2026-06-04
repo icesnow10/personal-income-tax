@@ -462,14 +462,17 @@ def write_workbook(out_path, mov, summary, blocks, classification, logic, proven
     for _, r in mov.iterrows():
         is_rf = _is_rf_prod(r["product"])
         obs = "renda fixa — sem preço médio (valor vem da posição/informe, não de preço médio)" if is_rf else ""
+        # renda fixa NÃO tem preço médio: avg_price/custo_acumulado ficam em branco (o valor de Bens e
+        # Direitos vem do informe, nunca de preço médio).
+        avg_val = None if is_rf or r["avg_price"] is None or pd.isna(r["avg_price"]) else float(r["avg_price"])
+        custo_val = None if is_rf or pd.isna(r["custo_acumulado"]) else float(r["custo_acumulado"])
         ws.append([r["entry_type"], (r["date"].to_pydatetime() if pd.notna(r["date"]) else None),
                    r["entry_movement"], r["product"], r["holder"], float(r["quantity"]),
                    (None if pd.isna(r["unit_price"]) else float(r["unit_price"])), float(r["amount"]),
                    r["ticker"], r["emt"], (r["provento_type"] or None),
                    (None if pd.isna(r["quantity_accumulated"]) else float(r["quantity_accumulated"])),
                    (None if pd.isna(r["cycle"]) else int(r["cycle"])), float(r["amount_adjusted"]),
-                   (None if r["avg_price"] is None or pd.isna(r["avg_price"]) else float(r["avg_price"])),
-                   (None if pd.isna(r["custo_acumulado"]) else float(r["custo_acumulado"])), obs])
+                   avg_val, custo_val, obs])
     for row in ws.iter_rows(min_row=2, min_col=2, max_col=2): row[0].number_format = "yyyy-mm-dd"
     ws.freeze_panes = "A2"
 
@@ -625,30 +628,8 @@ def write_workbook(out_path, mov, summary, blocks, classification, logic, proven
     for j in range(2, len(head)+1): sm.column_dimensions[get_column_letter(j)].width = 22
     sm.freeze_panes = "B2"
 
-    # income — per-ticker provento breakdown, with (interest, yield, total) FOR EACH YEAR. The
-    # Movimentação export is the full history; here the three metrics are repeated per calendar
-    # year so income can be read/validated year by year (NaT dates excluded).
-    inc = wb.create_sheet("income")
-    inc_years = sorted(mov["date"].dropna().dt.year.astype(int).unique().tolist())
-    head = ["ticker"]
-    for y in inc_years: head += [f"interest_{y}", f"yield_{y}", f"total_{y}"]
-    inc.append(head); hdr(inc, len(head), LPURPLE)
-    for tk in main_tickers:
-        sub = mov[(mov["ticker"] == tk) & mov["date"].notna()]
-        row, has_any = [tk], False
-        for y in inc_years:
-            sy = sub[sub["date"].dt.year == y]
-            interest = float(sy[sy["provento_type"] == "interest_on_equity"]["amount_adjusted"].sum())
-            yld = float(sy[sy["provento_type"].isin(["dividend","yield","return_of_capital"])]["amount_adjusted"].sum())
-            total = float(sy[sy["provento_type"].astype(bool)]["amount_adjusted"].sum())
-            if interest or yld or total: has_any = True
-            row += [round(interest,2) if abs(interest)>=0.005 else None,
-                    round(yld,2) if abs(yld)>=0.005 else None,
-                    round(total,2) if abs(total)>=0.005 else None]
-        if has_any: inc.append(row)
-    inc.column_dimensions["A"].width = 14
-    for j in range(2, len(head)+1): inc.column_dimensions[get_column_letter(j)].width = 12
-    inc.freeze_panes = "B2"
+    # (aba `income` removida — a autoridade dos rendimentos é o INFORME da corretora/escriturador,
+    # não o b3; o breakdown de proventos por ano não é declarado e era só auditoria.)
 
     # Amortization (return of capital) received during the fiscal year — appended to the
     # discriminação so the declaration explains the cost-basis reduction: return of capital is NOT
@@ -756,21 +737,22 @@ def write_workbook(out_path, mov, summary, blocks, classification, logic, proven
             ps.cell(1,j).font = Font(bold=True, color="FFFFFFFF")
             ps.cell(1,j).alignment = Alignment(horizontal="center")
     for tipo,headers,rows in blocks:
+        # renda fixa / Tesouro NÃO entra na position: não tem preço médio; o valor de Bens e Direitos
+        # vem do informe (transcrito no informes.json), não daqui.
+        if tipo == "RENDA FIXA":
+            continue
         for d in rows:
             tk = getcol(d,"Código de Negociação","Codigo de Negociacao"); qty = getcol(d,"Quantidade")
             avg = (summary.get(tk) or {}).get("avg")
-            is_rf = (tipo == "RENDA FIXA")
-            # renda fixa (deb/cra/cri/tesouro/cdb): SEM custo_total e SEM discriminação — não tem
-            # preço médio; o valor de Bens e Direitos vem da posição/informe, não daqui.
-            custo = None if is_rf else (round(avg*qty,2) if (avg is not None and isinstance(qty,(int,float))) else None)
+            custo = round(avg*qty,2) if (avg is not None and isinstance(qty,(int,float))) else None
             line = []
             for col in pcols:
                 if col == "tipo": line.append(tipo)
-                elif col == "avg_price": line.append(None if is_rf else avg)
+                elif col == "avg_price": line.append(avg)
                 elif col == "custo_total": line.append(custo)
                 elif col == "discriminacao":
-                    line.append("" if is_rf else (discriminacao(d, summary) + incorp_text.get(tk, "")
-                                + amort_text.get(tk, "") + transfer_text.get(tk, "")))
+                    line.append(discriminacao(d, summary) + incorp_text.get(tk, "")
+                                + amort_text.get(tk, "") + transfer_text.get(tk, ""))
                 elif col == "Tipo (B3)": line.append(d.get("Tipo"))
                 else: line.append(d.get(col))
             ps.append(line)
@@ -800,17 +782,15 @@ def write_workbook(out_path, mov, summary, blocks, classification, logic, proven
                 pa.cell(1,j).font = Font(bold=True, color="FFFFFFFF")
                 pa.cell(1,j).alignment = Alignment(horizontal="center")
         for tipo,headers,rows in prior_blocks:
+            if tipo == "RENDA FIXA":                        # renda fixa fora da position_previous (idem position)
+                continue
             for d in rows:
                 code = getcol(d,"Código de Negociação","Codigo de Negociacao")
                 ct = _map_code(code) if code else None
                 qty = getcol(d,"Quantidade")
-                if tipo == "RENDA FIXA":
-                    avg_p = None
-                    custo_p = None                          # renda fixa não recebe custo_total
-                else:
-                    tc, pq = prior_total_cost.get(ct), prior_q.get(ct)
-                    avg_p = round(tc/pq,6) if (tc is not None and pq) else None
-                    custo_p = round(avg_p*qty,2) if (avg_p is not None and isinstance(qty,(int,float))) else None
+                tc, pq = prior_total_cost.get(ct), prior_q.get(ct)
+                avg_p = round(tc/pq,6) if (tc is not None and pq) else None
+                custo_p = round(avg_p*qty,2) if (avg_p is not None and isinstance(qty,(int,float))) else None
                 line = []
                 for col in pcols2:
                     if col == "tipo": line.append(tipo)
@@ -948,66 +928,10 @@ def write_workbook(out_path, mov, summary, blocks, classification, logic, proven
     for c,w in zip(range(1,9),[12,7,7,12,18,120,14,14]): ir.column_dimensions[get_column_letter(c)].width = w
     ir.freeze_panes = "A2"
 
-    # ---- IRPF rendimentos isentos (tipo 9: dividendos + rendimentos FII) and exclusivos
-    # (tipo 10: JCP). Per-ticker totals, only main tickers (equity/FII/BDR), CNPJ and
-    # ticker-nome resolved from the position blocks. Tickers with zero income are skipped.
-    pos_lookup = {}                                        # ticker → (cnpj, full produto name)
-    for tipo,_,rows in blocks:
-        if tipo == "RENDA FIXA": continue
-        for d in rows:
-            tk = getcol(d,"Código de Negociação","Codigo de Negociacao")
-            if tk and tk not in pos_lookup:
-                pos_lookup[tk] = (getcol(d,"CNPJ da Empresa","CNPJ do Fundo") or "",
-                                  str(getcol(d,"Produto") or "").strip())
-
-    # One column PER YEAR (not a single summed "valor"): the value columns are the calendar
-    # years present in the history, so each ticker's provento is broken out by the year it was
-    # received — the user reads the declaration year's column and validates the others. Each year
-    # column is followed by an auxiliary "<year>_corretoras" column holding a JSON of the per-
-    # broker (holder) split, so a year's total can be reconciled against each corretora's informe.
-    def build_income_sheet(name, groups, hide_old=False, freeze=True):
-        # groups = [(codigo_irpf, {provento_types}), ...] — uma mesma ficha pode ter códigos distintos
-        # (ex.: isentos: dividendo=09 e rendimento de FII=99). Cada linha é marcada com o seu código.
-        # hide_old: collapse (hide) year columns older than the prior year, keeping only the current
-        # (year) and previous (prev) years visible. freeze: whether to freeze the first 4 columns.
-        all_types = set().union(*[m for _, m in groups])
-        prov = mov[mov["provento_type"].isin(all_types) & mov["date"].notna()]
-        years = sorted(prov["date"].dt.year.astype(int).unique().tolist())
-        ws = wb.create_sheet(name)
-        head = ["tipo_de_rendimento","ticker","cnpj","ticker_nome"]
-        for y in years: head += [str(y), f"{y}_corretoras"]
-        ws.append(head); hdr(ws, len(head), LPURPLE)
-        out = []
-        for codigo, mask in groups:
-            for tk, sub in mov.groupby("ticker"):
-                if not is_code(tk): continue
-                p = sub[sub["provento_type"].isin(mask) & sub["date"].notna()]
-                if p["amount_adjusted"].abs().sum() < 0.005: continue
-                p = p.assign(_y=p["date"].dt.year.astype(int))
-                by_year = p.groupby("_y")["amount_adjusted"].sum()
-                cnpj, produto = pos_lookup.get(tk, ("", ""))
-                row = [codigo, tk, cnpj, produto]
-                for y in years:
-                    v = float(by_year.get(y, 0.0))
-                    row.append(round(v, 2) if abs(v) >= 0.005 else None)
-                    # per-broker split for this year, as compact JSON (sorted by broker for stability)
-                    split = (p[p["_y"] == y].groupby("holder")["amount_adjusted"].sum().round(2).to_dict())
-                    split = {str(k): val for k, val in split.items() if abs(val) >= 0.005}
-                    row.append(json.dumps(dict(sorted(split.items())), ensure_ascii=False) if split else None)
-                out.append((codigo, tk, row))
-        for _, _, row in sorted(out, key=lambda x: (x[0], x[1])): ws.append(row)
-        for c,w in zip(range(1,5),[20,12,18,60]): ws.column_dimensions[get_column_letter(c)].width = w
-        for j in range(5, len(head)+1):
-            col = head[j-1]
-            cd = ws.column_dimensions[get_column_letter(j)]
-            cd.width = 40 if col.endswith("_corretoras") else 12
-            # keep only the current (year) and prior (prev) year columns visible; hide older ones
-            if hide_old and int(col.split("_")[0]) < prev: cd.hidden = True
-        if freeze: ws.freeze_panes = "E2"
-
-    # NÃO montamos as fichas IRPF_rendimentos_isentos / IRPF_rendimentos_exclusivos: a autoridade
-    # dos rendimentos (dividendos/JCP/juros) é o INFORME da corretora/escriturador, não o b3. O b3 só
-    # consolida a posição/preço médio de renda variável; a aba `income` acima fica como auditoria.
+    # NÃO montamos fichas de rendimento (isentos/exclusiva) nem aba `income`: a autoridade dos
+    # rendimentos (dividendos/JCP/juros) é o INFORME da corretora/escriturador, transcrito no
+    # informes.json (consumido pelo /consolidate). O b3 só reconstrói posição/preço médio de
+    # renda variável.
 
     wb.save(out_path)
 

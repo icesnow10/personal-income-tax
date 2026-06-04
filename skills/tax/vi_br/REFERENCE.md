@@ -72,9 +72,10 @@ copy to your working folder and replace with your own (don't commit a taxpayer's
 
 The Posição export has one sheet per asset class; columns differ. The script detects the class
 from the sheet name (bdr / tesouro|renda fixa / fundo / acao) and **unions all columns** into the
-`Position` sheet (nothing dropped; B3's `Tipo` column is renamed `Tipo (B3)` to free the new
-`tipo`). Per holding it adds `tipo`, `avg_price` (from §1), `custo_total = avg×qty`, and a
-`discriminacao` text.
+`Position` sheet (B3's `Tipo` column is renamed `Tipo (B3)` to free the new `tipo`). Per holding it
+adds `tipo`, `avg_price` (from §1), `custo_total = avg×qty`, and a `discriminacao` text. **Renda fixa
+(`tipo` = RENDA FIXA) é excluída da `position`** — não tem preço médio; seu valor de Bens e Direitos
+vem do informe (transcrito no `informes.json`), não daqui.
 
 IRPF "Bens e Direitos" (codes as of recent years — confirm in the program):
 
@@ -119,9 +120,10 @@ all rastreável, no manual entry. Appended in this order after the base discrimi
 
 ### IRPF rendimentos (proventos) → ficha e código
 
-> O b3 **não monta** as fichas de rendimento — a autoridade dos dividendos/JCP/juros é o **informe**
-> da corretora/escriturador (regime de caixa, somando custódias). A aba `income` do b3 é só auditoria.
-> O mapa abaixo (por `provento_type`) é referência conceitual; os valores declarados vêm do `informes.json`.
+> O b3 **não monta** as fichas de rendimento (e não tem mais aba `income`) — a autoridade dos
+> dividendos/JCP/juros é o **informe** da corretora/escriturador (regime de caixa, somando custódias),
+> transcrito no `informes.json`. O mapa abaixo (por `provento_type`) é referência conceitual; os
+> valores declarados vêm do `informes.json`, não do b3.
 
 Mapping by `provento_type`:
 
@@ -143,8 +145,8 @@ Base legal: FII/FIAgro isentos se ≥100 cotistas, negociados em bolsa/balcão e
 11.196/2005 + Lei 14.754/2023). FI-Infra alíquota 0% PF (Lei 12.431/2011). Amortização reduz o custo
 de aquisição (devolução de capital, IN RFB 1585/2015 subseção X art. 35+).
 
-> ⚠️ `provento_type = return_of_capital` é usado para a **redução de custo** (§1) e pode aparecer no
-> resumo informativo `income`, mas **não** entra nas fichas de rendimento do IRPF (não é renda).
+> ⚠️ `provento_type = return_of_capital` é usado para a **redução de custo** (§1), mas **não** entra
+> nas fichas de rendimento do IRPF (não é renda).
 
 ## 4. Audit (built-in)
 

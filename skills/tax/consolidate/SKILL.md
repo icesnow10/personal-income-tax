@@ -1,6 +1,6 @@
 ---
 name: consolidate
-description: Build the final IRPF workbook (irpf_consolidated.xlsx) from three sources — the variable_income workbook (preço médio of ações/FII/BDR), the fixed_income workbook (RF bens + isentos + exclusiva), and processed/informes.json (everything else: dividendos/JCP de ação, contas, RDB, exterior, JCP a receber). Writes Bens e Direitos, Rendimentos Isentos e Não Tributáveis, and Tributação Exclusiva/Definitiva. RF items already owned by fixed_income are NOT re-read from informes.json (no double counting). Use when the user wants to build/montar the final IRPF fichas, or mentions gerar as fichas, montar a declaração, consolidar, /consolidate.
+description: Build the final IRPF workbook (irpf_consolidated.xlsx) from two sources — the variable_income workbook (only the VALUE of ações/FII/BDR custodiados na B3, via preço médio) and processed/informes.json (EVERYTHING else: renda fixa, ações/ETF no exterior, contas, RDB, dividendos/JCP de ação, JCP a receber, todos os rendimentos). Writes Bens e Direitos, Rendimentos Isentos e Não Tributáveis, and Tributação Exclusiva/Definitiva. No intermediate fixed_income/internacional workbooks — RF and exterior come straight from informes.json. Use when the user wants to build/montar the final IRPF fichas, or mentions gerar as fichas, montar a declaração, consolidar, /consolidate.
 ---
 
 # /generate — montar as fichas do IRPF a partir do B3 + transcrição dos informes

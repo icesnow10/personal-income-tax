@@ -28,7 +28,10 @@ JSON honestly from the informes and let `/completeness` flag divergences (loop b
   **grupo/cód** daqui (autoridade), mas lembre que o **valor** do B3 vem da `b3_brazil_variable_income_avg_price_calculation.xlsx`.
 - **Nubank/Wise Conta Global**: saldo em moeda estrangeira (EUR/USD em 31/12) → Bens e Direitos
   não-B3 (depósito no exterior, `localizacao` = código do país). A Wise BR (CNPJ 40.571.694/0001-31)
-  costuma ter saldo 0.
+  costuma ter saldo 0. **Conta multimoeda = uma linha por moeda/localização**: cada moeda vira um
+  item `bens` próprio, com sua `localizacao` (país) e convertida pela **sua** PTAX de compra de 31/12
+  (ex.: a Conta Global no Wise tem EUR → loc 628 Reino Unido e USD → loc 249 EUA — não somar tudo
+  numa linha só). PTAX por moeda; nunca um valor agregado com uma taxa só.
 - **Renda fixa transferida** (saldo 0 no informe de origem): declarar no destino, não duplicar.
 
 ## Mapping each informe line to a ficha
@@ -36,9 +39,18 @@ JSON honestly from the informes and let `/completeness` flag divergences (loop b
 |---|---|---|
 | Ação / BDR / FII / FI-Infra / Tesouro / RF (posição em 31/12) | `bens` (b3 ou não) | grupo/cód do informe |
 | Conta corrente, RDB/CDB, moeda, cripto, conta no exterior, JCP a receber | `bens` (`b3:false`) | 06/01, 04/02, 08/03, 62/01, 99/07 … |
+| **Ação / ETF no exterior** (Avenue, Nomad, IBKR, etrade — não está na B3) | `bens` (`b3:false`, `localizacao` ≠ 105) | 03/01, 07/99 ou 31/… (confirmar) |
 | Dividendos de ação | `isentos` | 09 |
 | Rendimento de FII / FIAgro / FI-Infra (sem IR) | `isentos` | 99 |
 | JCP (juros sobre capital próprio) | `exclusiva` | 10 |
 | Rendimento de RDB/CDB/Tesouro/fundo come-cotas (com IR na fonte) | `exclusiva` | 06 |
+
+- **Campos por item** — transcreva tudo que o informe traz: `key`/ticker, `grupo`, `codigo`, `cnpj`,
+  `nome`, `localizacao` e a **`discriminacao` sugerida** (texto de "Discriminação sugerida para a
+  Declaração de Bens e Direitos" — BTG e outras corretoras já entregam pronto; transcreva verbatim).
+  O `/consolidate` usa a `discriminacao` quando presente (senão `descr`/`nome`).
+- **Exterior**: ações/ETF no exterior **vão no `informes.json`** (`b3:false`, `localizacao` do país, ex.:
+  249 EUA) — não os deixe de fora. O **rendimento** desses é TRIBUTÁVEL (carnê-leão/GCAP), não vai em
+  isento/exclusiva — o `/completeness` sinaliza se algo do exterior cair na ficha errada.
 
 Schema completo dos campos em [../consolidate/REFERENCE.md](../consolidate/REFERENCE.md). Not tax advice.

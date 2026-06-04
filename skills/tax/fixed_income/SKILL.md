@@ -1,45 +1,43 @@
 ---
 name: fixed_income
-description: Build the IRPF renda-fixa slice (CDB, CRA, CRI, debênture, LCI, LCA, Tesouro) from the informes transcription plus a B3 position validation. Reads processed/informes.json (the RF items — value from the broker informe) and the B3 Posição export (to validate that every renda-fixa security held on the B3 is covered by an informe), and writes an Excel with position + bens_e_direitos + isentos (cód 12) + exclusiva (cód 06), renda fixa only. Use when the user wants to build the renda-fixa part of the IRPF, validate RF positions against the informes, or mentions renda fixa, CDB/CRA/CRI/debênture/Tesouro, /fixed_income.
+description: Documentação da fatia de renda fixa do IRPF (CDB, CRA, CRI, debênture, LCI, LCA, Tesouro). NÃO gera arquivo próprio — a renda fixa flui /read → processed/informes.json → /consolidate como qualquer outro bem do informe. A validação "todo título de RF na Posição B3 tem item no informe" vive agora no /completeness (--posicao). Use quando o usuário perguntar como a renda fixa entra no IRPF, ou mencionar renda fixa, CDB/CRA/CRI/debênture/Tesouro, /fixed_income.
 ---
 
-# /fixed_income — a fatia de renda fixa do IRPF (a partir dos informes + validação na B3)
+# /fixed_income — renda fixa no IRPF (documentação; sem arquivo próprio)
 
 Renda fixa da B3 (**CDB / CRA / CRI / debênture / LCI / LCA / Tesouro**) **não tem preço médio
-reconstruível** — o custo embute juros decorridos que a B3 não separa e o principal amortiza. O valor
-de Bens e Direitos é o **saldo do informe da corretora**. Este skill não reconstrói nada: ele pega os
-itens de RF que o [/read](../read/SKILL.md) já transcreveu (`informes.json`) e usa a **Posição B3**
-só para **validar** que todo título de RF na custódia tem um item no informe.
+reconstruível** — o custo embute juros decorridos que a B3 não separa e o principal amortiza. Por isso
+o valor de Bens e Direitos é o **saldo do informe da corretora**, transcrito pelo [/read](../read/SKILL.md).
 
-## Entradas
-- **`processed/informes.json`** — a transcrição unificada (do /read). Daqui vêm os valores e
-  rendimentos de RF (a autoridade do valor é o informe).
-- **B3 Posição** (`resources/POS.xlsx`) — só para listar os títulos de RF e suas quantidades (validação).
+> **Este skill não roda script nem gera `.xlsx`.** A renda fixa é só mais um conjunto de itens do
+> `informes.json` (grupo 04: 04/02 tributado, 04/03 isento) e entra na declaração final pelo
+> [/consolidate](../consolidate/SKILL.md), direto do `informes.json` — sem arquivo intermediário e sem
+> dupla contagem. O único entregável é o `irpf_consolidated.xlsx`.
 
-## Saída — `processed/fixed_income.xlsx`
-| Sheet | Conteúdo |
-|---|---|
-| `position` | os títulos de RF da Posição B3 (código, produto, quantidade, corretora) + coluna `validacao` = se há item no informe |
-| `bens_e_direitos` | bens de RF (04/02 tributado · 04/03 isento) — **valor do informe** |
-| `isentos` | rendimentos isentos de RF — **código 12** (juros de CRA/CRI/LCI/LCA/debênture incentivada) |
-| `exclusiva` | rendimentos exclusiva de RF — **código 06** (CDB/Tesouro/aplicações) |
+## Como a renda fixa flui (sem etapa própria)
+```
+/read ──► processed/informes.json ──► /consolidate ──► irpf_consolidated.xlsx
+ (LLM lê os PDFs)   (RF = grupo 04)     (script junta)     (Bens + Isentos + Exclusiva)
+```
+- **Bens e Direitos**: cada título de RF é um item `bens` `b3:false` (04/02 CDB/Tesouro tributado;
+  04/03 CRA/CRI/LCI/LCA/debênture incentivada isento) — **valor do informe**.
+- **Isentos (cód 12)**: juros de CRA/CRI/LCI/LCA/debênture incentivada — do informe.
+- **Exclusiva (cód 06)**: rendimento de CDB/Tesouro/aplicações tributado na fonte — do informe.
 
-## Escopo (de quem é o quê)
-Este skill é dono **só da renda fixa da B3** — os títulos que aparecem na Posição B3. **NÃO** é dono de
-RDB, conta de pagamento, fundo come-cotas, moeda/exterior (esses não estão na Posição B3 → ficam com o
-[/consolidate](../consolidate/SKILL.md)). Dividendos/JCP de ação também não (são renda variável).
-
-## Workflow
-1. Rode o [/read](../read/SKILL.md) primeiro (gera `informes.json`).
-2. `python scripts/build_fixed_income.py --posicao resources/POS.xlsx --informes processed/informes.json --out processed/fixed_income.xlsx`
-3. **Leia a validação**: cada título da Posição B3 **sem item no informe** é sinalizado (`⚠️ FALTA no
-   informe`) — confira o informe da corretora e adicione no `informes.json` (volta ao /read). A validação
-   **só sinaliza**, não trava o pipeline.
-4. O [/consolidate](../consolidate/SKILL.md) junta este excel + o workbook de renda variável + o resto do
-   informe na declaração final (sem duplicar — os itens de RF daqui são removidos do informes.json lá).
+## Validação Posição B3 × informe → agora no /completeness
+A checagem "todo título de renda fixa na **Posição B3** tem um item correspondente no `informes.json`"
+(sinal de transcrição faltando no /read) migrou para o [/completeness](../completeness/SKILL.md):
+```
+python ../completeness/scripts/completeness.py compare \
+    --investimentos processed/b3_brazil_variable_income_avg_price_calculation.xlsx \
+    --informes processed/informes.json --posicao resources/POS.xlsx
+```
+A seção **"Renda fixa — Posição B3 × informe"** do relatório lista cada título de RF na Posição sem item
+no informe (`⚠️ FALTA no informe`). Confira o informe da corretora e adicione no `informes.json` (volta
+ao /read). Só sinaliza, não trava.
 
 ## Importante
 - **Não é orientação fiscal.** O valor de RF vem do informe; divergência de quantidade é sinal de revisão.
-- **CRA/CRI/debênture** embutem juros decorridos — por isso o valor **tem** que vir do informe, nunca de
-  uma reconstrução. CDB/LCI/LCA/Tesouro idem (valor aplicado do informe).
-- Mantenha **genérico** — nunca comite o `informes.json`/`fixed_income.xlsx` de um contribuinte.
+- **CRA/CRI/debênture** embutem juros decorridos — o valor **tem** que vir do informe, nunca de uma
+  reconstrução. CDB/LCI/LCA/Tesouro idem (valor aplicado do informe).
+- Mantenha **genérico** — nunca comite o `informes.json` de um contribuinte.

@@ -27,9 +27,19 @@ Cross-check the two views and write a single **`.md`** report, organized by the 
 The b3 skill only covers **B3-custodied** assets; banco/exterior/saldos live only in the informes and
 must be declared by hand — this skill flags those so nothing is missed.
 
+> **O completeness NÃO é só script.** As etapas a jusante (vi_br/consolidate) são determinísticas e a
+> única fonte é o `informes.json`, mas a **verificação** é diferente: para **resolver as pendências** que
+> o script sinaliza (RF faltando, escriturador desconhecido, divergência de valor, rendimento de
+> exterior em ficha errada), o agente **pode reler os PDFs/PNGs de `resources/` com a ferramenta Read e
+> buscar na web** (ex.: triangular o escriturador, conferir um CNPJ/valor). O script faz os checks
+> determinísticos; o agente fecha a lacuna relendo a fonte ou pesquisando — e **cada correção volta para
+> o `informes.json`** (loop build → verify), nunca é remendada só no Excel final.
+
 ## Inputs the user provides
 Run from the **taxpayer folder** (layout `resources/` raw → `processed/` derived → root deliverables):
 - **`processed/b3_brazil_variable_income_avg_price_calculation.xlsx`** (the b3 skill output).
+- **`resources/POS.xlsx`** (B3 Posição, opcional via `--posicao`) — para a validação de renda fixa
+  (todo título de RF na Posição B3 tem item no `informes.json`?), migrada do antigo `/fixed_income`.
 - **`processed/informes.json`** — the unified transcription built by [/read](../read/SKILL.md). A single
   object with `bens` / `isentos` / `exclusiva` lists (schema in [../consolidate/REFERENCE.md](../consolidate/REFERENCE.md)):
   ```json
@@ -55,7 +65,7 @@ Run from the **taxpayer folder** (layout `resources/` raw → `processed/` deriv
 1. **Build the transcription** with [/read](../read/SKILL.md) (or run it standalone). Parsing aid:
    `python scripts/completeness.py extract resources/` (image/encrypted PDFs yield nothing — read by hand).
 2. **Escriturador da B3** (sem prints/informes): `python scripts/fetch_escriturador.py --investimentos processed/b3_brazil_variable_income_avg_price_calculation.xlsx` → popula `memory/escriturador_memory.md` consultando a API da B3 para cada ação/FII/BDR do workbook.
-3. **Reconcile + fix**: `python scripts/completeness.py compare --investimentos processed/b3_brazil_variable_income_avg_price_calculation.xlsx --informes processed/informes.json`
+3. **Reconcile + fix**: `python scripts/completeness.py compare --investimentos processed/b3_brazil_variable_income_avg_price_calculation.xlsx --informes processed/informes.json --posicao resources/POS.xlsx`
    Writes `completeness_report.md` AND **audits/edits the deliverable `irpf_consolidated.xlsx` in place**
    (it's picked up automatically beside the report; override with `--consolidado`). Any value that drifts
    from its ficha authority (Bens → b3_source custo; rendimentos → informe) is **rewritten in the
@@ -65,6 +75,12 @@ Run from the **taxpayer folder** (layout `resources/` raw → `processed/` deriv
    - **Bens e Direitos**: `grupo | código | asset | qtd b3 | qtd informe | valor b3 | valor informe | fonte (PDF) | status`. Código mismatch is flagged inline (`⚠️b3=3/inf=10`); a TOTAL-a-declarar line counts the não-B3 items to add by hand.
    - **Rendimentos Isentos** (09/99) and **Tributação Exclusiva** (06/10): per código, with a **SOMA por código** (a per-item gap that reconciles at the total is visible).
    - **Escriturador das ações/FII**: por ação/FII/FI-Infra, qual o escriturador (de `memory/escriturador_memory.md`) e se **o informe do escriturador foi usado** (o `tag` aparece no `source` do rendimento). O escriturador é a autoridade de dividendos/JCP — a corretora pode ver só parte (ex.: BBSE3 R$ 454,46 na corretora × R$ 842,87 no escriturador BB). Sinaliza escriturador desconhecido (preencher da B3) ou rendimento que veio só de corretora.
+   - **Renda fixa — Posição B3 × informe** (com `--posicao`): cada título de RF na Posição B3 sem item
+     no `informes.json` é sinalizado (`⚠️ FALTA no informe`) — confira o informe da corretora e volte ao
+     /read. (Validação migrada do antigo `/fixed_income`.)
+   - **Exterior — rendimento em ficha errada?**: rendimento cujo `key` é um bem no exterior (localização
+     ≠ 105) que caiu em isento/exclusiva — lembrete de que dividendo/ganho no exterior é tributável
+     (carnê-leão / GCAP), vai em OUTRA ficha.
    - **Divergências de classificação**: same asset+value under a different código between b3 and informe (reclassificação — ex.: BBSE3 cód 99 no b3 × cód 10 no informe).
    - **Ajustes no `irpf_consolidated.xlsx`**: o que foi editado (valor corrigido p/ a autoridade) e o que foi conferido — espelha a coluna `obs_completeness` do arquivo.
    - **Resumo** + **Action items**.
