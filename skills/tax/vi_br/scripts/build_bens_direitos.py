@@ -10,14 +10,14 @@ Inputs
 
 Living memory (markdown tables — the single source of truth, pasted into aux_mapping):
   mapping_memory.md     entry_movement -> action (+ logic).   [generic; bundled fallback]
-  ticker_memory.md      from_ticker -> to_ticker (renames).   [taxpayer-specific]
-  overrides_memory.md   ticker,date -> qty,avg_price (cost resets for mergers). [taxpayer-specific]
+  ticker_memory.md      from_ticker -> to_ticker (ALL renames: ações/FII/BDR + produtos de renda
+                        fixa, ex.: nome que ganhou "- EM LIQUIDACAO EXTRAJUDICIAL").  [taxpayer-specific]
 
 Usage
   python build_bens_direitos.py MOV.xlsx POS.xlsx OUT.xlsx [--memory-dir DIR] [--year YYYY]
 
-  --memory-dir defaults to ./memory (created if missing); each memory file missing there falls back to the
-  bundled copy for mapping_memory.md only (ticker/overrides default to empty, with a warning).
+  --memory-dir defaults to ./memory (created if missing); a missing file falls back to the bundled
+  copy for mapping_memory.md only (ticker_memory.md defaults to an empty template, with a warning).
 
 Average price = ACQUISITION COST ÷ quantity (cost basis, what Bens e Direitos asks for), NOT
 market price. See REFERENCE.md. Not tax advice.
@@ -38,29 +38,12 @@ IRPF_CODE = {"Ação": (3,1), "BDR": (4,4), "FII": (7,3), "RENDA FIXA": (4,2)}  
 # empty (header-only) templates seeded into the working folder so the files are visible/editable
 EMPTY_TEMPLATES = {
  "ticker_memory.md": (
-   "# ticker_memory — current ticker per code\n\n"
+   "# ticker_memory — current ticker / nome per code\n\n"
    "Explicit renames the engine can't infer (fund mergers, BDR renames, PN→ON). FII subscription\n"
-   "receipts (XXXX12 / XXXX13 → XXXX11) are folded automatically — no row needed. Add yours:\n\n"
+   "receipts (XXXX12 / XXXX13 → XXXX11) are folded automatically — no row needed. **Renda fixa**\n"
+   "product renames also go here (use the full `Produto` text as `from_ticker`/`to_ticker`, e.g. an\n"
+   "issuer gaining \"- EM LIQUIDACAO EXTRAJUDICIAL\"). Add yours:\n\n"
    "| from_ticker | to_ticker | note | source |\n|---|---|---|---|\n"),
- "rf_memory.md": (
-   "# rf_memory — renda fixa product renames\n\n"
-   "Maps a PRIOR-year B3 renda-fixa `Produto` name to its CURRENT name, so a bond whose name\n"
-   "changed between years (e.g. an issuer gaining \"- EM LIQUIDACAO EXTRAJUDICIAL\") still matches\n"
-   "when filling `valor_<prior>` from `--posicao-anterior`. Match is by exact Produto text.\n"
-   "Add yours:\n\n"
-   "| from_produto | to_produto | note | source |\n|---|---|---|---|\n"),
- "rf_value_memory.md": (
-   "# rf_value_memory — Bens e Direitos value override (CRA / CRI / debêntures) — OBRIGATÓRIO\n\n"
-   "**MANDATORY** for amortizing / secondary-market fixed income (CRA, CRI, debêntures): B3 alone\n"
-   "CANNOT produce the Bens e Direitos value — the purchase price embeds **juros decorridos** (accrued\n"
-   "interest paid to the seller) that B3 never separates, and the principal amortizes over time. The\n"
-   "broker informe (BTG/NU) gives the authoritative Saldo — pin it here per security código WITH the\n"
-   "source (the value is traced into the discriminação). Without it the build falls back to\n"
-   "compra−amortização (overstates the cost by the juros decorridos) and prints an OBRIGATÓRIO warning.\n"
-   "CDB, LCI, LCA and Tesouro do NOT need this (qty × acquisition unit price already matches).\n\n"
-   "Valores em formato **BR** (`18.537,55`, não `18537.55`).\n\n"
-   "| codigo | valor_anterior | valor_atual | note | source |\n|---|---|---|---|---|\n"
-   "| EXEMPLO25 | | 18.537,55 | CRA exemplo | informe BTG (saldo 31/12) |\n"),
 }
 
 
@@ -99,7 +82,7 @@ def table_with(path, key):
 
 def resolve_memory(name, memory_dir, warn):
     """Return the path to a memory file in memory_dir, SEEDING it if absent so the user can see
-    and edit it: mapping_memory.md is copied from the bundled generic table; ticker/overrides get
+    and edit it: mapping_memory.md is copied from the bundled generic table; ticker_memory.md gets
     an empty header-only template (never illustrative rows that could be applied by mistake)."""
     p = Path(memory_dir) / name
     if p.exists(): return p
@@ -124,25 +107,13 @@ def load_memory(memory_dir, warn):
         classification[mv] = (d.get("credito","no_action"), d.get("debito","no_action"))
         logic[mv] = d.get("logic","")
         provento[mv] = (d.get("provento_type") or "").strip()
+    # ticker_memory cobre TODOS os renames (ações/FII/BDR + produtos de renda fixa); um único arquivo.
     renames, ren_rows = {}, []
     for d in table_with(resolve_memory("ticker_memory.md", memory_dir, warn), "from_ticker"):
         f, t = d.get("from_ticker"), d.get("to_ticker")
-        if f and t: renames[f] = t
+        if f and t: renames[f.strip()] = t.strip()
         ren_rows.append(d)
-    rf_renames, rf_rows = {}, []
-    for d in table_with(resolve_memory("rf_memory.md", memory_dir, warn), "from_produto"):
-        f, t = d.get("from_produto"), d.get("to_produto")
-        if f and t: rf_renames[f.strip()] = t.strip()
-        rf_rows.append(d)
-    def _num(s):
-        s = (s or "").strip().replace(".","").replace(",",".")
-        try: return float(s)
-        except ValueError: return None
-    rf_value = {}                                          # codigo -> (valor_anterior, valor_atual, source)
-    for d in table_with(resolve_memory("rf_value_memory.md", memory_dir, warn), "codigo"):
-        cod = (d.get("codigo") or "").strip()
-        if cod: rf_value[cod] = (_num(d.get("valor_anterior")), _num(d.get("valor_atual")), d.get("source") or "")
-    return classification, logic, provento, renames, ren_rows, rf_renames, rf_rows, rf_value
+    return classification, logic, provento, renames, ren_rows
 
 
 RECEIPT_RE = re.compile(r"^[A-Z]{4}1[23]$")               # FII subscription receipt codes
@@ -445,8 +416,7 @@ def hdr(ws, n, fill):
         ws.cell(1,j).fill=f; ws.cell(1,j).font=ft; ws.cell(1,j).alignment=Alignment(horizontal="center")
 
 def write_workbook(out_path, mov, summary, blocks, classification, logic, provento, ren_rows, year,
-                   renames=None, prior_blocks=None, rf_renames=None, rf_value=None):
-    rf_value = rf_value or {}
+                   renames=None, prior_blocks=None):
     wb = Workbook()
 
     ws = wb.active; ws.title = "movements_enriched"
@@ -507,64 +477,9 @@ def write_workbook(out_path, mov, summary, blocks, classification, logic, proven
                           if summary[k]["avg"] is not None and is_code(k) and k not in rf_tickers)
     sm_years = sorted(mov["date"].dropna().dt.year.astype(int).unique().tolist())
 
-    # ---- renda fixa: VALOR APLICADO, never the curva ----
-    # Bens e Direitos for CDB/LCA/LCI/CRA/DEB is the principal: position QUANTITY × acquisition
-    # UNIT PRICE. The B3 renda-fixa position export has no "Valor Aplicado" column (only MTM /
-    # CURVA / FECHAMENTO, which embed accrued, untaxed yield), so the unit price comes from the
-    # movimentação COMPRA/VENDA ("Valor da Operação" ÷ quantity) per security código. Using the
-    # POSITION quantity makes partial redemptions fall out correctly (qty already reduced).
-    # Tesouro Direto (no parseable código) keeps its own "Valor Aplicado" column.
-    RF_CODE_RE = re.compile(r'^[A-Z/]+\s*-\s*([A-Z0-9]*\d[A-Z0-9]*)')   # security código (must contain a digit)
-    AMORT_PREFIX = ("CRA", "CRI", "DEB")                  # amortizing / accrued-interest (juros decorridos) papers
-    def _rf_kind(name):
-        n = norm(name)
-        if "amortiz" in n: return "amort"
-        if "juros" in n:   return "juros"
-        if "compra" in n:  return "compra"
-        return None
-    _rf_appl, _rf_qty, rf_events = {}, {}, {}             # CDB/LCA: unit price | CRA/DEB: dated events
-    for _, r in mov.iterrows():
-        prod = str(r["product"]); m = RF_CODE_RE.match(prod)
-        if not m: continue
-        cod = m.group(1)
-        if prod.upper().startswith(AMORT_PREFIX):
-            k = _rf_kind(r["entry_movement"])
-            if k and pd.notna(r["date"]):
-                rf_events.setdefault(cod, []).append((r["date"], k, float(r["amount"] or 0)))
-        elif "COMPRA" in str(r["entry_movement"]).upper() and str(r["entry_type"]).startswith("Cred"):
-            _rf_appl[cod] = _rf_appl.get(cod,0.0) + float(r["amount"] or 0)
-            _rf_qty[cod]  = _rf_qty.get(cod,0.0) + float(r["quantity"] or 0)
-    rf_unit = {c: _rf_appl[c]/_rf_qty[c] for c in _rf_appl if _rf_qty.get(c)}
-
-    def rf_amort_calc(cod, cutoff):                        # CRA/DEB: (compra, amortização, juros) até cutoff
-        ev = rf_events.get(cod, [])
-        f = lambda kind: round(sum(v for dt,k,v in ev if k==kind and dt <= cutoff), 2)
-        return f("compra"), f("amort"), f("juros")
-
-    def is_amortizable(d):
-        return str(getcol(d,"Produto") or "").strip().upper().startswith(AMORT_PREFIX)
-
-    def rf_valor(d, prior=False):
-        cod = getcol(d,"Código","Codigo"); qty = getcol(d,"Quantidade")
-        if is_amortizable(d):
-            # CRA/CRI/DEB: the purchase price embeds juros decorridos that B3 never separates, and the
-            # principal amortizes — so the authoritative value is the broker informe (rf_value_memory).
-            # Without an override, fall back to compra − amortização (overstates by juros decorridos).
-            ov = rf_value.get(cod)
-            if ov is not None and (ov[0] if prior else ov[1]) is not None:
-                return round(ov[0] if prior else ov[1], 2)
-            compra, amort, _ = rf_amort_calc(cod, pd.Timestamp(prev if prior else year, 12, 31))
-            v = compra - amort
-            return round(v,2) if abs(v) > 0.005 else None
-        u = rf_unit.get(cod)
-        if u is not None and isinstance(qty,(int,float)):
-            return round(qty*u, 2)                         # CDB/LCA/etc: qtd × preço de aquisição
-        v = getcol(d,"Valor Aplicado")                     # Tesouro Direto carries the applied value
-        return round(v,2) if isinstance(v,(int,float)) else None   # else blank (no curva fallback)
-    rf_no_unit = sorted({c for tipo,_,rows in blocks if tipo=="RENDA FIXA" for d in rows
-                         for c in [getcol(d,"Código","Codigo")]
-                         if c and c not in rf_unit and c not in rf_events and c not in rf_value
-                         and not isinstance(getcol(d,"Valor Aplicado"),(int,float))})
+    # Renda fixa NÃO é valorada aqui: não tem preço médio e foi excluída de todas as abas valoradas
+    # (position, irpf, reconciliation). Seu valor de Bens e Direitos vem do informe (informes.json),
+    # montado pelo /consolidate. Em movements_enriched os papéis de RF aparecem com avg_price em branco.
 
     def ir_key(tipo, d):
         # one line per produto (renda fixa) / per ticker (equity). The displayed ticker becomes the
@@ -580,7 +495,7 @@ def write_workbook(out_path, mov, summary, blocks, classification, logic, proven
     # What the prior file authoritatively adds: the real prior-year QUANTITY (fixes corporate-
     # action quantity drift like MGLU3) and renda-fixa applied value (untracked in the movements).
     prev = year - 1
-    prior_q, prior_rf, prior_total_cost = {}, {}, {}   # prior_total_cost: reconstructed cost at 31/12 prev
+    prior_q, prior_total_cost = {}, {}                  # prior_total_cost: reconstructed cost at 31/12 prev
     def _map_code(code):
         if not isinstance(code, str): return code
         c = code.strip()
@@ -588,18 +503,12 @@ def write_workbook(out_path, mov, summary, blocks, classification, logic, proven
         return (renames or {}).get(c, c)                  # apply taxpayer renames (old code -> current)
     if prior_blocks:
         for tipo,_,rows in prior_blocks:
+            if tipo == "RENDA FIXA": continue             # renda fixa não é valorada aqui (vem do informe)
             for d in rows:
-                if tipo == "RENDA FIXA":
-                    k = ir_key(tipo, d)                         # código (CRA/DEB) ou produto (CDB/LCI/LCA/Tesouro)
-                    if not is_amortizable(d):
-                        k = (rf_renames or {}).get(k, k)        # produto-keyed: aplica rename de nome
-                    v = rf_valor(d, prior=True)                 # qtd × preço de aquisição (valor aplicado)
-                    if k and v is not None: prior_rf[k] = prior_rf.get(k,0.0) + v
-                else:
-                    code = getcol(d,"Código de Negociação","Codigo de Negociacao")
-                    ct = _map_code(code) if code else None
-                    q = getcol(d,"Quantidade")
-                    if ct and isinstance(q,(int,float)): prior_q[ct] = prior_q.get(ct,0.0) + q
+                code = getcol(d,"Código de Negociação","Codigo de Negociacao")
+                ct = _map_code(code) if code else None
+                q = getcol(d,"Quantidade")
+                if ct and isinstance(q,(int,float)): prior_q[ct] = prior_q.get(ct,0.0) + q
 
     head = ["ticker"]
     for y in sm_years: head += [f"accumulated_quantity_{y}", f"avg_price_{y}", f"total_{y}"]
@@ -887,41 +796,22 @@ def write_workbook(out_path, mov, summary, blocks, classification, logic, proven
     # ticker), preserving first-seen order.
     agg, order = {}, []
     for tipo,headers,rows in blocks:
+        if tipo == "RENDA FIXA": continue                  # renda fixa não entra na ficha de renda variável
         for d in rows:
             key = (tipo, ir_key(tipo, d))
             if key not in agg: agg[key] = []; order.append(key)
             agg[key].append(d)
     for tipo, tk in order:
-        if tipo == "RENDA FIXA": continue                  # renda fixa não entra na ficha de renda variável
         ds = agg[(tipo, tk)]
         grupo, codigo = IRPF_CODE.get(tipo, ("",""))
-        # isentos (LCI/LCA/CRA/CRI/debênture incentivada) são grupo 04 / código 03; tributados
-        # (CDB, Tesouro/LTN, RDB) são 04 / 02. A B3 só distingue pelo prefixo do produto.
-        if tipo == "RENDA FIXA":
-            prod0 = str(getcol(ds[0],"Produto") or "").strip().upper()
-            codigo = 3 if prod0.startswith(("LCI","LCA","CRA","CRI","DEB")) else 2
-        elif tipo == "FII" and is_fi_infra(getcol(ds[0],"Produto")):
+        if tipo == "FII" and is_fi_infra(getcol(ds[0],"Produto")):
             codigo = 10                                    # FI-Infra incentivado (Lei 12.431) = 07/10, não 07/03
         cnpj = getcol(ds[0],"CNPJ da Empresa","CNPJ do Fundo") or ""
-        if tipo == "RENDA FIXA":
-            # VALOR APLICADO = qtd × preço de aquisição (sem curva). Tesouro usa "Valor Aplicado".
-            vals = [v for v in (rf_valor(d) for d in ds) if v is not None]
-            valor_cur = round(sum(vals),2) if vals else None
-            # prior-year renda fixa: applied value from --posicao-anterior (by produto)
-            valor_prev = round(prior_rf[tk],2) if (prior_blocks and tk in prior_rf) else None
-        else:
-            avg = (summary.get(tk) or {}).get("avg")
-            total_qty = sum(q for d in ds for q in [getcol(d,"Quantidade")] if isinstance(q,(int,float)))
-            valor_cur = round(avg*total_qty,2) if (avg is not None and total_qty) else None
-            valor_prev = cost_at(tk, pd.Timestamp(prev,12,31))
-        # ticker label: use the security código ONLY when the produto holds a SINGLE código (e.g.
-        # ENAT14, CRA025006SS, a lone CDB). With several códigos (e.g. Banco Master), keep the
-        # produto name in the ticker column and list the códigos only in the discriminação.
-        ticker_label = tk
-        if tipo == "RENDA FIXA":
-            cods = list(dict.fromkeys(c for d in ds for c in [getcol(d,"Código","Codigo")] if c))
-            if len(cods) == 1: ticker_label = cods[0]
-        ir.append([ticker_label, grupo, codigo, 105, cnpj,
+        avg = (summary.get(tk) or {}).get("avg")
+        total_qty = sum(q for d in ds for q in [getcol(d,"Quantidade")] if isinstance(q,(int,float)))
+        valor_cur = round(avg*total_qty,2) if (avg is not None and total_qty) else None
+        valor_prev = cost_at(tk, pd.Timestamp(prev,12,31))
+        ir.append([tk, grupo, codigo, 105, cnpj,
                    discriminacao_agg(tipo, tk, ds, summary) + incorp_text.get(tk, "")
                    + amort_text.get(tk, "") + transfer_text.get(tk, ""),
                    valor_prev, valor_cur])
@@ -942,45 +832,42 @@ def main():
     ap.add_argument("--memory-dir", default="memory", help="folder with the *_memory.md files (default: ./memory)")
     ap.add_argument("--year", type=int)
     ap.add_argument("--posicao-anterior", dest="posicao_anterior", default=None,
-                    help="B3 Posição export at 31/12 of the PRIOR year — fills the valor_<prev> column "
-                         "with authoritative renda-fixa values and corrects prior-year quantities")
+                    help="B3 Posição export at 31/12 of the PRIOR year — corrects prior-year quantities "
+                         "(corporate actions) and adds the position_previous/reconciliation_previous sheets")
     a = ap.parse_args()
     warn = []
     Path(a.memory_dir).mkdir(parents=True, exist_ok=True)   # enforce the memory/ folder (seed files land here, never the cwd root)
-    classification, logic, provento, renames, ren_rows, rf_renames, rf_rows, rf_value = load_memory(a.memory_dir, warn)
+    classification, logic, provento, renames, ren_rows = load_memory(a.memory_dir, warn)
     peek = read_movimentacao(a.movimentacao)
     year = a.year or int(pd.to_datetime(peek["date"], dayfirst=True, errors="coerce").dt.year.max())
     mov, summary, unknown = build_movements(a.movimentacao, classification, provento, renames, year)
     blocks = load_position(a.posicao)
     prior_blocks = load_position(a.posicao_anterior) if a.posicao_anterior else None
     write_workbook(a.saida, mov, summary, blocks, classification, logic, provento, ren_rows, year,
-                   renames=renames, prior_blocks=prior_blocks, rf_renames=rf_renames, rf_value=rf_value)
+                   renames=renames, prior_blocks=prior_blocks)
     print(f"OK -> {a.saida}  (fiscal year {year}, {len(mov)} movement rows, "
           f"{sum(len(r) for _,_,r in blocks)} positions, {len(renames)} renames)")
     for w in warn: print("NOTE:", w)
-    # prior-year renda-fixa products that did NOT match a current product name (matched by produto):
-    # the valor_<prev> is left blank — fill it by hand (resgatado/vencido, or the issuer was renamed,
-    # e.g. a CDB whose name gained "- EM LIQUIDACAO EXTRAJUDICIAL").
+    # Sanity sobre as Posições: produto de renda fixa que estava em 31/12/prev e não aparece na atual
+    # (mudou de nome? adicione um rename no ticker_memory; ou foi resgatado/vencido). A RF não é valorada
+    # aqui — seu valor de Bens e Direitos vem do informe (informes.json) e a cobertura é checada no /completeness.
     if prior_blocks:
         def rf_products(bl):
-            s = {}
+            s = set()
             for tipo,_,rows in bl:
                 if tipo != "RENDA FIXA": continue
                 for d in rows:
                     prod = str(getcol(d,"Produto") or "").strip()
-                    v = getcol(d,"Valor Aplicado","Valor Atualizado CURVA","Valor Atualizado MTM","Valor Atualizado")
-                    if prod: s[prod] = s.get(prod,0.0) + (v if isinstance(v,(int,float)) else 0.0)
+                    if prod: s.add(prod)
             return s
-        cur_rf, prev_rf_raw = rf_products(blocks), rf_products(prior_blocks)
-        prev_rf = {}                                       # apply rf_memory renames (prior -> current)
-        for k, v in prev_rf_raw.items():
-            kk = (rf_renames or {}).get(k, k); prev_rf[kk] = prev_rf.get(kk, 0.0) + v
+        cur_rf = rf_products(blocks)
+        prev_rf = {(renames or {}).get(p, p) for p in rf_products(prior_blocks)}   # renames do ticker_memory
         unmatched = sorted(p for p in prev_rf if p not in cur_rf)
         if unmatched:
-            print(f"\nNOTE: {len(unmatched)} renda-fixa product(s) held at 31/12/{year-1} have no "
-                  f"matching name in the current position - valor_{year-1} left blank, fill by hand:")
+            print(f"\nNOTE: {len(unmatched)} produto(s) de renda fixa em 31/12/{year-1} não aparecem na "
+                  f"posição atual (mudou de nome? rename no ticker_memory; ou resgatado/vencido) — confira no informe/completeness:")
             for p in unmatched:
-                print(f"    {p}  (valor {year-1} ~ R$ {brl(round(prev_rf[p],2))})")
+                print(f"    {p}")
     if unknown:
         print("WARNING: unmapped entry_movement (treated as no_action) — add to mapping_memory.md:\n  "
               + "\n  ".join(unknown))

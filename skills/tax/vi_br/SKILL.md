@@ -53,14 +53,13 @@ These markdown files drive the run. Edit them as new things appear — **no code
 | File | Holds | Scope |
 |---|---|---|
 | `mapping_memory.md` | each B3 `entry_movement` → action (purchase/sale/no_action/…) + provento_type | generic (B3) — bundled |
-| `ticker_memory.md` | renames: old/related code → current ticker (mergers, BDR/PN→ON) | taxpayer-specific |
-| `rf_memory.md` | renda-fixa product renames: prior-year `Produto` name → current name (e.g. an issuer gaining "- EM LIQUIDACAO EXTRAJUDICIAL"), so `valor_<prior>` matches across the name change | taxpayer-specific |
-| `rf_value_memory.md` | Bens e Direitos value override per security código for **CRA / CRI / debêntures** (amortizing / accrued-interest papers B3 can't value): the broker informe Saldo, with source | taxpayer-specific |
+| `ticker_memory.md` | **TODOS os renames** num arquivo só: old/related code → current ticker (mergers, BDR/PN→ON) **e** produtos de renda fixa cujo `Produto` mudou de nome (ex.: ganhou "- EM LIQUIDACAO EXTRAJUDICIAL") | taxpayer-specific |
 
-Keep your filled `ticker_memory.md` / `rf_memory.md` in the taxpayer's **`memory/`** folder.
-`--memory-dir` **defaults to `./memory`** (created if missing), so the memory files always live in
-`memory/` — never scattered in the taxpayer root. `mapping_memory.md` falls back to the bundled one if
-not present; the taxpayer-specific files are seeded empty in `memory/` on first run.
+Não há mais `rf_memory.md` (renames de RF vão no `ticker_memory.md`) nem `rf_value_memory.md` (a renda
+fixa não é valorada aqui — seu valor de Bens e Direitos vem do informe, via `informes.json`/`/consolidate`).
+Keep your filled `ticker_memory.md` in the taxpayer's **`memory/`** folder. `--memory-dir` **defaults to
+`./memory`** (created if missing). `mapping_memory.md` falls back to the bundled one if not present;
+`ticker_memory.md` is seeded empty in `memory/` on first run.
 
 ## Folder layout (taxpayer folder)
 
@@ -69,7 +68,7 @@ The skills share a 3-tier layout, run from the taxpayer's folder:
 | Folder | Holds |
 |---|---|
 | `resources/` | **raw** inputs: the B3 `Movimentação`/`Posição` exports + the informe PDFs |
-| `memory/` | the memory files (`ticker_memory.md`, `rf_memory.md`, `rf_value_memory.md`, `mapping_memory.md`) |
+| `memory/` | the memory files (`ticker_memory.md`, `mapping_memory.md`) |
 | `processed/` | **derived** artifacts: `b3_brazil_variable_income_avg_price_calculation.xlsx` (this skill's output) + the transcribed JSONs |
 | (root) | the deliverables: `irpf_consolidated.xlsx` + `completeness_report.md` |
 
@@ -82,10 +81,10 @@ The skills share a 3-tier layout, run from the taxpayer's folder:
    `python scripts/build_bens_direitos.py resources/MOV.xlsx resources/POS.xlsx processed/b3_brazil_variable_income_avg_price_calculation.xlsx --memory-dir memory --year 2025`
    (the script warns about any movement type missing from `mapping_memory.md` — add a row there).
    Optionally pass `--posicao-anterior resources/POS_PRIOR.xlsx` (the B3 Posição at 31/12 of the **prior**
-   year): it fills `valor_<prev>` for renda fixa with the authoritative applied value and corrects
-   prior-year quantities for corporate actions (e.g. a grupamento), and adds a
-   `reconciliation_previous` sheet. Equity/FII prior cost still comes from the movements (the
-   position file has market value, not acquisition cost — total cost is preserved across events).
+   year): it corrects prior-year quantities for corporate actions (e.g. a grupamento) and adds the
+   `position_previous` / `reconciliation_previous` sheets. Equity/FII prior cost comes from the
+   movements (the position file has market value, not acquisition cost — total cost is preserved
+   across events). Renda fixa não é valorada aqui (vem do informe), então não tem `valor_<prev>`.
 4. **Read the AUDIT** printed at the end (also in the `reconciliation` sheet): every quantity
    mismatch between movements and the year-end position is listed by ticker. Each one is a
    corporate action the rules don't capture (a merger that resets cost basis, an exotic
